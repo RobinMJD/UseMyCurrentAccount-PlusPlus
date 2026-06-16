@@ -1,0 +1,32 @@
+{
+  "name": "UseMyCurrentAccount++",
+  "version": "1.0.0",
+  "description": "Use the configured browser-profile account when signing in to Microsoft sites.",
+  "manifest_version": 3,
+  "homepage_url": "https://github.com/RobinMJD/UseMyCurrentAccount-PlusPlus",
+  "permissions": ["storage", "identity", "declarativeNetRequestWithHostAccess"],
+  "host_permissions": ["https://login.microsoftonline.com/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "UseMyCurrentAccount++"
+  },
+  "options_ui": {
+    "page": "settings.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://login.microsoftonline.com/*"],
+      "js": ["accountPicker.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  }
+}

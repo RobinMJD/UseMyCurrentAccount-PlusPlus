@@ -1,0 +1,289 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f5f7fb;
+  color: #172033;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 360px;
+  background: #f5f7fb;
+}
+
+body.popup-surface,
+body.popup-surface #root {
+  width: 400px;
+  min-width: 400px;
+  max-width: 400px;
+  overflow-x: hidden;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  min-height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172033;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: #64748b;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button.primary {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+}
+
+button.danger {
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+
+a {
+  color: #0f766e;
+}
+
+.app {
+  width: min(880px, calc(100vw - 28px));
+  margin: 0 auto;
+  padding: 20px 0;
+}
+
+.app.compact {
+  width: 400px;
+  margin: 0;
+  padding: 14px;
+}
+
+.app.compact .app-header {
+  display: grid;
+  gap: 8px;
+}
+
+.app.compact .status {
+  justify-self: start;
+}
+
+.app.secondary {
+  padding-top: 0;
+}
+
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 23px;
+  line-height: 1.15;
+}
+
+.app-header p {
+  margin: 5px 0 0;
+  color: #526174;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status.success {
+  background: #dcfce7;
+  color: #14532d;
+}
+
+.status.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.controls-panel,
+.toggles-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 5px;
+}
+
+.field span,
+.switch-row strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #172033;
+  padding: 8px 9px;
+  min-height: 38px;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.switch-row span {
+  display: grid;
+  gap: 3px;
+}
+
+.switch-row small,
+.empty,
+.diagnostics time {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.switch-row input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.action-row,
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-row {
+  margin: 12px 0;
+}
+
+.section-title {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.section-title h2,
+.about h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.message {
+  margin: 10px 0;
+  border: 1px solid #86efac;
+  background: #dcfce7;
+  color: #14532d;
+  border-radius: 6px;
+  padding: 9px 10px;
+  font-size: 13px;
+}
+
+.message.error {
+  border-color: #fecaca;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.diagnostics {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diagnostics li {
+  display: grid;
+  gap: 2px;
+  border-top: 1px solid #edf2f7;
+  padding-top: 8px;
+}
+
+.diagnostics span {
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.diagnostics strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.about p {
+  margin: 8px 0 0;
+  color: #526174;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+@media (max-width: 560px) {
+  body.settings-surface {
+    min-width: 0;
+  }
+
+  body.settings-surface .app {
+    width: 100%;
+    padding: 14px;
+  }
+
+  body.settings-surface .app-header {
+    display: grid;
+  }
+}
