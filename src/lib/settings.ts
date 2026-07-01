@@ -74,6 +74,18 @@ export function mergeSettings(input: Partial<UseMyCurrentAccountSettings> | unde
   };
 }
 
+export function applyDetectedProfileEmailPrefill(
+  settings: UseMyCurrentAccountSettings,
+  detectedEmail: unknown
+): UseMyCurrentAccountSettings {
+  const detectedProfileEmail = normalizeUpn(detectedEmail);
+  return mergeSettings({
+    ...settings,
+    detectedProfileEmail,
+    preferredUpn: settings.preferredUpn || detectedProfileEmail
+  });
+}
+
 export async function loadSettings(): Promise<UseMyCurrentAccountSettings> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
   return mergeSettings(result[SETTINGS_KEY] as Partial<UseMyCurrentAccountSettings> | undefined);

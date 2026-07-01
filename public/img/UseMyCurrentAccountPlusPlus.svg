@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">UseMyCurrentAccount++ icon</title>
+  <desc id="desc">An account avatar selected with a check mark and forward motion.</desc>
+  <defs>
+    <linearGradient id="bg" x1="20" y1="12" x2="108" y2="116" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#f8fafc"/>
+  <path d="M22 35c0-9.94 8.06-18 18-18h48c9.94 0 18 8.06 18 18v58c0 9.94-8.06 18-18 18H40c-9.94 0-18-8.06-18-18V35z" fill="url(#bg)" filter="url(#shadow)"/>
+  <circle cx="60" cy="51" r="15" fill="#e0f2fe"/>
+  <path d="M35 91c3.34-14.25 13.22-23 25-23s21.66 8.75 25 23H35z" fill="#e0f2fe"/>
+  <path d="M80 39h22m-10-10 10 10-10 10" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="92" cy="90" r="24" fill="#16a34a" stroke="#f8fafc" stroke-width="8"/>
+  <path d="m81 90 8 8 16-18" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -70,7 +70,7 @@ export function chooseAccountTile(
     return {
       action: "missingPreferredAccount",
       matchedUpns: [],
-      message: "Auto-pick skipped because no preferred account is configured."
+      message: "Auto-pick skipped because no account to auto select is configured."
     };
   }
 
@@ -82,14 +82,14 @@ export function chooseAccountTile(
     return {
       action: "noMatch",
       matchedUpns: [],
-      message: `No account tile matched ${settings.preferredUpn}.`
+      message: `No account tile matched the account to auto select.`
     };
   }
   if (matches.length > 1) {
     return {
       action: "multipleMatches",
       matchedUpns,
-      message: `Multiple account tiles matched ${settings.preferredUpn}; no account was clicked.`
+      message: "Multiple account tiles matched the account to auto select; no account was clicked."
     };
   }
 
@@ -155,7 +155,7 @@ async function recordUrlPreparedDiagnostic(settings: UseMyCurrentAccountSettings
   if (!hasAuthorizeHint && !hasFederationHint) {
     return;
   }
-  await sendDiagnostic("urlRewritten", `Microsoft sign-in URL is prepared for ${settings.preferredUpn}.`, settings);
+  await sendDiagnostic("urlRewritten", "Microsoft sign-in URL is prepared for the account to auto select.", settings);
 }
 
 async function sendDiagnostic(

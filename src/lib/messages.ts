@@ -9,7 +9,6 @@ import {
 export type UseMyCurrentAccountMessage =
   | { action: "getSettings" }
   | { action: "saveSettings"; settings: UseMyCurrentAccountSettings }
-  | { action: "refreshProfileIdentity" }
   | { action: "recordPickerResult"; diagnostic: DiagnosticEvent }
   | { action: "clearDiagnostics" };
 
@@ -24,7 +23,7 @@ export function validateUseMyCurrentAccountMessage(message: unknown): UseMyCurre
     throw new Error("Unsupported UseMyCurrentAccount++ message.");
   }
 
-  if (message.action === "getSettings" || message.action === "refreshProfileIdentity" || message.action === "clearDiagnostics") {
+  if (message.action === "getSettings" || message.action === "clearDiagnostics") {
     return { action: message.action };
   }
 

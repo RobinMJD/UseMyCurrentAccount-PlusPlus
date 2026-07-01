@@ -1,11 +1,11 @@
 import { getPreferredDomain } from "./lib/authUrl";
+import { getBadgeState } from "./lib/badge";
 import { isTrustedRuntimeSender, validateUseMyCurrentAccountMessage } from "./lib/messages";
 import {
   addDiagnostic,
-  createDiagnostic,
+  applyDetectedProfileEmailPrefill,
   loadSettings,
   mergeSettings,
-  normalizeUpn,
   saveSettings,
   SETTINGS_KEY,
   type UseMyCurrentAccountSettings
@@ -54,7 +54,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function initializeExtension(): Promise<void> {
-  const settings = await refreshProfileIdentity(false);
+  const settings = await refreshProfileIdentity();
   await updateRuntimeState(settings);
 }
 
@@ -66,11 +66,6 @@ async function handleMessage(message: ReturnType<typeof validateUseMyCurrentAcco
       const saved = await saveSettings(message.settings);
       await updateRuntimeState(saved);
       return saved;
-    }
-    case "refreshProfileIdentity": {
-      const settings = await refreshProfileIdentity(true);
-      await updateRuntimeState(settings);
-      return settings;
     }
     case "recordPickerResult": {
       const settings = await loadSettings();
@@ -85,27 +80,10 @@ async function handleMessage(message: ReturnType<typeof validateUseMyCurrentAcco
   }
 }
 
-async function refreshProfileIdentity(recordEvent: boolean): Promise<UseMyCurrentAccountSettings> {
+async function refreshProfileIdentity(): Promise<UseMyCurrentAccountSettings> {
   const settings = await loadSettings();
   const profile = await getProfileUserInfo();
-  const detectedProfileEmail = normalizeUpn(profile.email);
-  const nextSettings = {
-    ...settings,
-    detectedProfileEmail,
-    preferredUpn: settings.preferredUpn || detectedProfileEmail
-  };
-  const saved = await saveSettings(
-    recordEvent && detectedProfileEmail
-      ? addDiagnostic(
-          nextSettings,
-          createDiagnostic("identityRefreshed", {
-            message: `Profile identity refreshed as ${detectedProfileEmail}.`,
-            preferredUpn: nextSettings.preferredUpn
-          })
-        )
-      : nextSettings
-  );
-  return saved;
+  return saveSettings(applyDetectedProfileEmailPrefill(settings, profile.email));
 }
 
 async function getProfileUserInfo(): Promise<chrome.identity.ProfileUserInfo> {
@@ -227,21 +205,10 @@ async function updateBadge(settings: UseMyCurrentAccountSettings): Promise<void>
   if (!chrome.action) {
     return;
   }
-  if (!settings.enabled) {
-    await chrome.action.setBadgeText({ text: "Off" });
-    await chrome.action.setBadgeBackgroundColor({ color: "#b91c1c" });
-    await chrome.action.setTitle({ title: "UseMyCurrentAccount++ is disabled" });
-    return;
-  }
-  if (!settings.preferredUpn) {
-    await chrome.action.setBadgeText({ text: "Set" });
-    await chrome.action.setBadgeBackgroundColor({ color: "#b45309" });
-    await chrome.action.setTitle({ title: "Set a preferred Microsoft account" });
-    return;
-  }
-  await chrome.action.setBadgeText({ text: "" });
-  await chrome.action.setBadgeBackgroundColor({ color: "#0f766e" });
-  await chrome.action.setTitle({ title: `UseMyCurrentAccount++: ${settings.preferredUpn}` });
+  const badge = getBadgeState(settings);
+  await chrome.action.setBadgeText({ text: badge.text });
+  await chrome.action.setBadgeBackgroundColor({ color: badge.color });
+  await chrome.action.setTitle({ title: badge.title });
 }
 
 function getErrorMessage(error: unknown): string {

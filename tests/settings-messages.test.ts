@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { isTrustedRuntimeSender, validateUseMyCurrentAccountMessage } from "../src/lib/messages";
-import { DEFAULT_SETTINGS, mergeSettings } from "../src/lib/settings";
+import { applyDetectedProfileEmailPrefill, DEFAULT_SETTINGS, mergeSettings } from "../src/lib/settings";
 
 describe("settings validation", () => {
   test("sanitizes malformed UPNs and oversized diagnostics", () => {
@@ -33,6 +33,19 @@ describe("settings validation", () => {
     });
   });
 
+  test("prefills an empty account from hidden profile identity", () => {
+    const prefilled = applyDetectedProfileEmailPrefill(mergeSettings(undefined), "PROFILE@EXAMPLE.COM");
+    expect(prefilled.detectedProfileEmail).toBe("profile@example.com");
+    expect(prefilled.preferredUpn).toBe("profile@example.com");
+
+    const preserved = applyDetectedProfileEmailPrefill(
+      mergeSettings({ preferredUpn: "manual@example.com" }),
+      "profile@example.com"
+    );
+    expect(preserved.detectedProfileEmail).toBe("profile@example.com");
+    expect(preserved.preferredUpn).toBe("manual@example.com");
+  });
+
   test("validates runtime messages", () => {
     const message = validateUseMyCurrentAccountMessage({
       action: "saveSettings",
@@ -43,6 +56,7 @@ describe("settings validation", () => {
       settings: { preferredUpn: "user@example.com" }
     });
     expect(() => validateUseMyCurrentAccountMessage({ action: "surprise" })).toThrow(/Unsupported/);
+    expect(() => validateUseMyCurrentAccountMessage({ action: "refreshProfileIdentity" })).toThrow(/Unsupported/);
   });
 
   test("rejects untrusted runtime senders", () => {

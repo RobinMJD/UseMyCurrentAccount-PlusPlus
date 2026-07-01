@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import "../styles.css";
 import { type UseMyCurrentAccountSettings } from "../lib/settings";
 import { sendMessage } from "../ui/runtime";
-import { SettingsEditor } from "../ui/SettingsEditor";
+import { PopupPanel } from "../ui/PopupPanel";
 
 function PopupApp() {
   const [settings, setSettings] = useState<UseMyCurrentAccountSettings | undefined>();
@@ -23,20 +23,17 @@ function PopupApp() {
   }, []);
 
   if (error) {
-    return <main className="app compact"><p className="message error">{error}</p></main>;
+    return <main className="popup-shell"><p className="message error">{error}</p></main>;
   }
 
   if (!settings) {
-    return <main className="app compact"><p className="empty">Loading...</p></main>;
+    return <main className="popup-shell"><p className="empty">Loading...</p></main>;
   }
 
   return (
-    <SettingsEditor
-      compact
+    <PopupPanel
       settings={settings}
       onSave={async (next) => setSettings(await sendMessage<UseMyCurrentAccountSettings>({ action: "saveSettings", settings: next }))}
-      onRefreshIdentity={async () => setSettings(await sendMessage<UseMyCurrentAccountSettings>({ action: "refreshProfileIdentity" }))}
-      onClearDiagnostics={async () => setSettings(await sendMessage<UseMyCurrentAccountSettings>({ action: "clearDiagnostics" }))}
       onOpenSettings={() => chrome.runtime.openOptionsPage()}
     />
   );

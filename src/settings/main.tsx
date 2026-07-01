@@ -1,9 +1,9 @@
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "../styles.css";
-import { DEFAULT_SETTINGS, mergeSettings, type UseMyCurrentAccountSettings } from "../lib/settings";
+import { mergeSettings, type UseMyCurrentAccountSettings } from "../lib/settings";
 import { sendMessage } from "../ui/runtime";
-import { SettingsEditor } from "../ui/SettingsEditor";
+import { createResetSettings, SettingsEditor } from "../ui/SettingsEditor";
 
 function SettingsApp() {
   const [settings, setSettings] = useState<UseMyCurrentAccountSettings | undefined>();
@@ -58,18 +58,20 @@ function SettingsApp() {
       <SettingsEditor
         settings={settings}
         onSave={save}
-        onRefreshIdentity={async () => setSettings(await sendMessage<UseMyCurrentAccountSettings>({ action: "refreshProfileIdentity" }))}
         onClearDiagnostics={async () => setSettings(await sendMessage<UseMyCurrentAccountSettings>({ action: "clearDiagnostics" }))}
       />
-      <main className="app secondary">
-        <section className="panel">
+      <main className="control-center secondary">
+        <section className="panel data-panel">
           <div className="section-title">
-            <h2>Import / Export</h2>
+            <div>
+              <h2>Data</h2>
+              <p>Import, export, or reset local extension settings.</p>
+            </div>
           </div>
           <div className="action-row">
             <button type="button" onClick={exportSettings}>Export JSON</button>
             <button type="button" onClick={() => fileInput.current?.click()}>Import JSON</button>
-            <button type="button" className="danger" onClick={() => void save(structuredClone(DEFAULT_SETTINGS))}>Reset</button>
+            <button type="button" className="danger" onClick={() => void save(createResetSettings())}>Reset</button>
           </div>
           <input
             ref={fileInput}

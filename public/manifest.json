@@ -4,14 +4,24 @@
   "description": "Use the configured browser-profile account when signing in to Microsoft sites.",
   "manifest_version": 3,
   "homepage_url": "https://github.com/RobinMJD/UseMyCurrentAccount-PlusPlus",
-  "permissions": ["storage", "identity", "declarativeNetRequestWithHostAccess"],
+  "permissions": ["storage", "identity", "identity.email", "declarativeNetRequestWithHostAccess"],
   "host_permissions": ["https://login.microsoftonline.com/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"
   },
+  "icons": {
+    "16": "img/UseMyCurrentAccountPlusPlus-16.png",
+    "48": "img/UseMyCurrentAccountPlusPlus-48.png",
+    "128": "img/UseMyCurrentAccountPlusPlus-128.png"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "UseMyCurrentAccount++"
+    "default_title": "UseMyCurrentAccount++",
+    "default_icon": {
+      "16": "img/UseMyCurrentAccountPlusPlus-16.png",
+      "48": "img/UseMyCurrentAccountPlusPlus-48.png",
+      "128": "img/UseMyCurrentAccountPlusPlus-128.png"
+    }
   },
   "options_ui": {
     "page": "settings.html",
