@@ -12,6 +12,7 @@ const removedProfileLabel = ["Detected", "profile", "email"].join(" ");
 let mountedRoot: Root | undefined;
 
 afterEach(async () => {
+  vi.useRealTimers();
   if (mountedRoot) {
     await act(async () => mountedRoot?.unmount());
     mountedRoot = undefined;
@@ -32,10 +33,62 @@ describe("extension UI surfaces", () => {
     const text = pageText();
     expect(text).toContain("Account to auto select");
     expect(text).toContain("Full settings");
+    expect(text).not.toContain("Apply");
     expect(text).not.toContain(removedProfileLabel);
     expect(text).not.toContain("Diagnostics");
     expect(text).not.toContain("URL rewrite");
     expect(text).not.toContain("Aliases");
+  });
+
+  test("popup saves valid account changes automatically", async () => {
+    vi.useFakeTimers();
+    const onSave = vi.fn(async () => undefined);
+    await render(
+      <PopupPanel
+        settings={settingsWith({ enabled: true })}
+        onSave={onSave}
+        onOpenSettings={vi.fn()}
+      />
+    );
+
+    const accountInput = getAccountInput();
+    await act(async () => {
+      setInputValue(accountInput, "USER@EXAMPLE.COM");
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+      await Promise.resolve();
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      enabled: true,
+      preferredUpn: "user@example.com"
+    }));
+  });
+
+  test("popup waits for a valid account before auto-saving ON state", async () => {
+    vi.useFakeTimers();
+    const onSave = vi.fn(async () => undefined);
+    await render(
+      <PopupPanel
+        settings={settingsWith({ enabled: true })}
+        onSave={onSave}
+        onOpenSettings={vi.fn()}
+      />
+    );
+
+    const accountInput = getAccountInput();
+    await act(async () => {
+      setInputValue(accountInput, "not an account");
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+      await Promise.resolve();
+    });
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(pageText()).toContain("saves automatically once valid");
   });
 
   test("settings page includes advanced behavior controls and diagnostics", async () => {
@@ -100,4 +153,18 @@ function settingsWith(input: Partial<UseMyCurrentAccountSettings>) {
 
 function pageText() {
   return document.body.textContent || "";
+}
+
+function getAccountInput() {
+  const accountInput = document.querySelector<HTMLInputElement>("input[aria-label='Account to auto select']");
+  if (!accountInput) {
+    throw new Error("Account input was not rendered.");
+  }
+  return accountInput;
+}
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+  valueSetter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 }
