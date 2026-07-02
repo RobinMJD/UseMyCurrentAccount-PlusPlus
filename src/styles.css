@@ -395,7 +395,7 @@ a {
   bottom: 0;
   z-index: 1;
   justify-content: flex-start;
-  margin-top: 14px;
+  margin-top: 0;
   border: 1px solid #dbe3ef;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.96);

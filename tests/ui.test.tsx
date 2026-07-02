@@ -112,10 +112,13 @@ describe("extension UI surfaces", () => {
     expect(text).toContain("URL rewrite");
     expect(text).toContain("Auto-pick account");
     expect(text).toContain("Suppress select account prompt");
+    expect(text).toContain("Save settings");
     expect(text).toContain("Statistics");
     expect(text).toContain("Diagnostics data");
     expect(text).toContain("Matched configured account.");
     expect(text).not.toContain(removedProfileLabel);
+    expect(text.indexOf("Save settings")).toBeLessThan(text.indexOf("Statistics"));
+    expect(text.indexOf("Statistics")).toBeLessThan(text.indexOf("Diagnostics data"));
   });
 
   test("statistics summarize local usage data", () => {

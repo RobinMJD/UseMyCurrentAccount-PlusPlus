@@ -188,6 +188,15 @@ export function SettingsEditor({ settings, onSave, onClearDiagnostics }: Setting
           </label>
         </section>
 
+        <section className="save-bar wide-panel">
+          <button type="button" className="primary" disabled={!canSave} onClick={() => void save()}>
+            Save settings
+          </button>
+          <span className={badge.isOperational ? "save-hint on" : "save-hint off"}>
+            {badge.reason === "enabled" ? "Ready to operate" : badge.reason === "disabled" ? "Extension is off" : "Account required"}
+          </span>
+        </section>
+
         <section className="panel statistics-panel wide-panel">
           <div className="section-title">
             <div>
@@ -256,15 +265,6 @@ export function SettingsEditor({ settings, onSave, onClearDiagnostics }: Setting
           )}
         </section>
       </div>
-
-      <section className="save-bar">
-        <button type="button" className="primary" disabled={!canSave} onClick={() => void save()}>
-          Save settings
-        </button>
-        <span className={badge.isOperational ? "save-hint on" : "save-hint off"}>
-          {badge.reason === "enabled" ? "Ready to operate" : badge.reason === "disabled" ? "Extension is off" : "Account required"}
-        </span>
-      </section>
 
       {message ? <p className="inline-message">{message}</p> : null}
     </main>
