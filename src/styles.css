@@ -362,7 +362,8 @@ a {
 
 .account-panel,
 .behavior-panel,
-.diagnostics-panel {
+.diagnostics-panel,
+.statistics-panel {
   display: grid;
   gap: 15px;
   align-content: start;
@@ -424,6 +425,41 @@ a {
   margin-top: 8px;
 }
 
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+}
+
+.stat-item {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border-top: 1px solid #edf2f7;
+  padding: 13px 14px 13px 0;
+}
+
+.stat-item dt {
+  color: #526174;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stat-item dd {
+  margin: 0;
+  color: #0f172a;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.stat-item span {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .diagnostics {
   display: grid;
   gap: 8px;
@@ -451,6 +487,28 @@ a {
   color: #111827;
   font-size: 13px;
   line-height: 1.35;
+}
+
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #edf2f7;
+  padding-top: 12px;
+}
+
+.pagination-row > span,
+.pagination-row strong {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.pagination-row > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .about {
@@ -485,5 +543,14 @@ a {
 
   .state-pill {
     justify-self: start;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pagination-row {
+    align-items: flex-start;
+    display: grid;
   }
 }
