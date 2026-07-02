@@ -39,6 +39,9 @@ describe("extension UI surfaces", () => {
     expect(text).not.toContain("Diagnostics");
     expect(text).not.toContain("URL rewrite");
     expect(text).not.toContain("Aliases");
+    expect(text).not.toContain("Mode details");
+    expect(text).not.toContain("cleanest way to skip the picker");
+    expect(text).not.toContain("Use another account");
   });
 
   test("popup saves valid account changes automatically", async () => {
@@ -112,6 +115,13 @@ describe("extension UI surfaces", () => {
     expect(text).toContain("URL rewrite");
     expect(text).toContain("Auto-pick account");
     expect(text).toContain("Suppress select account prompt");
+    expect(text).toContain("Mode details");
+    expect(text).toContain("cleanest way to skip the picker");
+    expect(text).toContain("does nothing on no match, multiple matches");
+    expect(text).toContain("prompt=select_account");
+    expect(text).toContain("prompt=login");
+    expect(text).toContain("prompt=consent");
+    expect(text).toContain("prompt=none");
     expect(text).toContain("Save settings");
     expect(text).toContain("Statistics");
     expect(text).toContain("Diagnostics data");
@@ -119,6 +129,7 @@ describe("extension UI surfaces", () => {
     expect(text).not.toContain(removedProfileLabel);
     expect(text.indexOf("Save settings")).toBeLessThan(text.indexOf("Statistics"));
     expect(text.indexOf("Statistics")).toBeLessThan(text.indexOf("Diagnostics data"));
+    expect(document.querySelector<HTMLDetailsElement>("details.mode-details")?.open).toBe(false);
   });
 
   test("statistics summarize local usage data", () => {

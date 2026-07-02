@@ -186,6 +186,33 @@ export function SettingsEditor({ settings, onSave, onClearDiagnostics }: Setting
               onChange={(event) => setDraft({ ...draft, suppressSelectAccountPrompt: event.currentTarget.checked })}
             />
           </label>
+
+          <details className="mode-details">
+            <summary>Mode details</summary>
+            <div className="mode-detail-list">
+              <div className="mode-detail-item">
+                <strong>URL rewrite</strong>
+                <p>
+                  Adds or replaces Microsoft sign-in hints before the page loads. This is the cleanest way to skip the picker
+                  when the app accepts hints.
+                </p>
+              </div>
+              <div className="mode-detail-item">
+                <strong>Auto-pick account</strong>
+                <p>
+                  Clicks exactly one matching visible account tile. It does nothing on no match, multiple matches, or
+                  "Use another account."
+                </p>
+              </div>
+              <div className="mode-detail-item">
+                <strong>Suppress select account prompt</strong>
+                <p>
+                  Removes only <code>prompt=select_account</code>, while leaving <code>prompt=login</code>,{" "}
+                  <code>prompt=consent</code>, and <code>prompt=none</code> unchanged.
+                </p>
+              </div>
+            </div>
+          </details>
         </section>
 
         <section className="save-bar wide-panel">
