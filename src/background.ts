@@ -1,5 +1,5 @@
-import { getPreferredDomain } from "./lib/authUrl";
 import { getBadgeState } from "./lib/badge";
+import { buildDynamicRules, MANAGED_DYNAMIC_RULE_IDS } from "./lib/dnrRules";
 import { isTrustedRuntimeSender, validateUseMyCurrentAccountMessage } from "./lib/messages";
 import {
   addDiagnostic,
@@ -10,11 +10,6 @@ import {
   SETTINGS_KEY,
   type UseMyCurrentAccountSettings
 } from "./lib/settings";
-
-const RULE_AUTHORIZE_HINTS = 1;
-const RULE_AUTHORIZE_SELECT_ACCOUNT = 2;
-const RULE_SAML_WSFED_WHR = 3;
-const RULE_IDS = [RULE_AUTHORIZE_HINTS, RULE_AUTHORIZE_SELECT_ACCOUNT, RULE_SAML_WSFED_WHR];
 
 void initializeExtension();
 
@@ -115,90 +110,9 @@ async function updateDynamicRules(settings: UseMyCurrentAccountSettings): Promis
     : [];
 
   await chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: RULE_IDS,
+    removeRuleIds: MANAGED_DYNAMIC_RULE_IDS,
     addRules
   });
-}
-
-function buildDynamicRules(settings: UseMyCurrentAccountSettings): chrome.declarativeNetRequest.Rule[] {
-  const preferredUpn = settings.preferredUpn || "";
-  const preferredDomain = getPreferredDomain(preferredUpn) || "";
-  const authorizeParamUpdates = [
-    { key: "login_hint", value: preferredUpn },
-    { key: "domain_hint", value: preferredDomain }
-  ];
-
-  const rules: chrome.declarativeNetRequest.Rule[] = [
-    {
-      id: RULE_AUTHORIZE_HINTS,
-      priority: 1,
-      action: {
-        type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
-        redirect: {
-          transform: {
-            queryTransform: {
-              addOrReplaceParams: authorizeParamUpdates
-            }
-          }
-        }
-      },
-      condition: {
-        regexFilter: "^https://login\\.microsoftonline\\.com/[^?#]+/oauth2(/v2\\.0)?/authorize([?#].*)?$",
-        resourceTypes: [
-          chrome.declarativeNetRequest.ResourceType.MAIN_FRAME,
-          chrome.declarativeNetRequest.ResourceType.SUB_FRAME
-        ]
-      }
-    },
-    {
-      id: RULE_SAML_WSFED_WHR,
-      priority: 1,
-      action: {
-        type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
-        redirect: {
-          transform: {
-            queryTransform: {
-              addOrReplaceParams: [{ key: "whr", value: preferredDomain }]
-            }
-          }
-        }
-      },
-      condition: {
-        regexFilter: "^https://login\\.microsoftonline\\.com/[^?#]+/(saml2|wsfed)([?#].*)?$",
-        resourceTypes: [
-          chrome.declarativeNetRequest.ResourceType.MAIN_FRAME,
-          chrome.declarativeNetRequest.ResourceType.SUB_FRAME
-        ]
-      }
-    }
-  ];
-
-  if (settings.suppressSelectAccountPrompt) {
-    rules.push({
-      id: RULE_AUTHORIZE_SELECT_ACCOUNT,
-      priority: 2,
-      action: {
-        type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
-        redirect: {
-          transform: {
-            queryTransform: {
-              removeParams: ["prompt"],
-              addOrReplaceParams: authorizeParamUpdates
-            }
-          }
-        }
-      },
-      condition: {
-        regexFilter: "^https://login\\.microsoftonline\\.com/[^?#]+/oauth2(/v2\\.0)?/authorize\\?([^#&]+&)*prompt=select_account(&[^#]*)?(#.*)?$",
-        resourceTypes: [
-          chrome.declarativeNetRequest.ResourceType.MAIN_FRAME,
-          chrome.declarativeNetRequest.ResourceType.SUB_FRAME
-        ]
-      }
-    });
-  }
-
-  return rules;
 }
 
 async function updateBadge(settings: UseMyCurrentAccountSettings): Promise<void> {

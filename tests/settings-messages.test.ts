@@ -22,6 +22,65 @@ describe("settings validation", () => {
     expect(settings.diagnostics).toHaveLength(60);
     expect(settings.diagnostics[0].message).toHaveLength(220);
     expect(settings.diagnostics[0].url).toHaveLength(500);
+    expect(settings.appExclusions).toEqual([]);
+  });
+
+  test("sanitizes and dedupes app exclusions", () => {
+    const settings = mergeSettings({
+      appExclusions: [
+        {
+          id: "one",
+          enabled: true,
+          matchType: "clientId",
+          value: "APP-123",
+          createdAt: "2026-06-16T10:00:00.000Z"
+        },
+        {
+          id: "duplicate",
+          enabled: false,
+          matchType: "clientId",
+          value: "app-123",
+          createdAt: "2026-06-16T10:00:00.000Z"
+        },
+        {
+          id: "host",
+          enabled: true,
+          matchType: "redirectHost",
+          value: "https://Portal.Example.com/callback",
+          createdAt: "not a date"
+        },
+        {
+          id: "bad",
+          enabled: true,
+          matchType: "redirectHost",
+          value: "localhost",
+          createdAt: "2026-06-16T10:00:00.000Z"
+        }
+      ]
+    });
+
+    expect(settings.appExclusions).toHaveLength(2);
+    expect(settings.appExclusions[0]).toMatchObject({
+      enabled: true,
+      matchType: "clientId",
+      value: "app-123"
+    });
+    expect(settings.appExclusions[1]).toMatchObject({
+      matchType: "redirectHost",
+      value: "portal.example.com",
+      createdAt: "1970-01-01T00:00:00.000Z"
+    });
+
+    const capped = mergeSettings({
+      appExclusions: Array.from({ length: 35 }, (_, index) => ({
+        id: `item-${index}`,
+        enabled: true,
+        matchType: "clientId",
+        value: `app-${index}`,
+        createdAt: "2026-06-16T10:00:00.000Z"
+      }))
+    });
+    expect(capped.appExclusions).toHaveLength(30);
   });
 
   test("keeps defaults stable across missing stored settings", () => {
@@ -57,6 +116,43 @@ describe("settings validation", () => {
     });
     expect(() => validateUseMyCurrentAccountMessage({ action: "surprise" })).toThrow(/Unsupported/);
     expect(() => validateUseMyCurrentAccountMessage({ action: "refreshProfileIdentity" })).toThrow(/Unsupported/);
+  });
+
+  test("preserves enriched diagnostic fields through message validation", () => {
+    const message = validateUseMyCurrentAccountMessage({
+      action: "recordPickerResult",
+      diagnostic: {
+        kind: "excludedApp",
+        occurredAt: "2026-06-16T10:00:00.000Z",
+        message: "Excluded.",
+        url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?state=secret",
+        flow: "oauth",
+        tenant: "common",
+        clientId: "APP-123",
+        redirectHost: "Portal.Example.com",
+        redirectPath: "/callback",
+        ruleId: 1000,
+        changedParams: ["login_hint", "bad param !"],
+        exclusionId: "exclusion-1",
+        exclusionValue: "APP-123",
+        pickerTileCount: 2,
+        pickerMatchCount: 0
+      }
+    });
+
+    expect(message).toMatchObject({
+      action: "recordPickerResult",
+      diagnostic: {
+        kind: "excludedApp",
+        flow: "oauth",
+        clientId: "app-123",
+        redirectHost: "portal.example.com",
+        ruleId: 1000,
+        changedParams: ["login_hint", "badparam"],
+        pickerTileCount: 2,
+        pickerMatchCount: 0
+      }
+    });
   });
 
   test("rejects untrusted runtime senders", () => {

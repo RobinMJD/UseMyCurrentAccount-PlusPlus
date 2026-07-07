@@ -1,6 +1,7 @@
 import {
   createDiagnostic,
   mergeSettings,
+  type AuthFlow,
   type DiagnosticEvent,
   type DiagnosticKind,
   type UseMyCurrentAccountSettings
@@ -41,10 +42,23 @@ export function validateUseMyCurrentAccountMessage(message: unknown): UseMyCurre
     return {
       action: "recordPickerResult",
       diagnostic: createDiagnostic(message.diagnostic.kind, {
+        id: typeof message.diagnostic.id === "string" ? message.diagnostic.id : undefined,
         message: typeof message.diagnostic.message === "string" ? message.diagnostic.message : String(message.diagnostic.kind),
         url: typeof message.diagnostic.url === "string" ? message.diagnostic.url : undefined,
+        sanitizedUrl: typeof message.diagnostic.sanitizedUrl === "string" ? message.diagnostic.sanitizedUrl : undefined,
         preferredUpn: typeof message.diagnostic.preferredUpn === "string" ? message.diagnostic.preferredUpn : undefined,
-        matchedUpn: typeof message.diagnostic.matchedUpn === "string" ? message.diagnostic.matchedUpn : undefined
+        matchedUpn: typeof message.diagnostic.matchedUpn === "string" ? message.diagnostic.matchedUpn : undefined,
+        flow: isAuthFlow(message.diagnostic.flow) ? message.diagnostic.flow : undefined,
+        tenant: typeof message.diagnostic.tenant === "string" ? message.diagnostic.tenant : undefined,
+        clientId: typeof message.diagnostic.clientId === "string" ? message.diagnostic.clientId : undefined,
+        redirectHost: typeof message.diagnostic.redirectHost === "string" ? message.diagnostic.redirectHost : undefined,
+        redirectPath: typeof message.diagnostic.redirectPath === "string" ? message.diagnostic.redirectPath : undefined,
+        ruleId: typeof message.diagnostic.ruleId === "number" ? message.diagnostic.ruleId : undefined,
+        changedParams: Array.isArray(message.diagnostic.changedParams) ? message.diagnostic.changedParams : undefined,
+        exclusionId: typeof message.diagnostic.exclusionId === "string" ? message.diagnostic.exclusionId : undefined,
+        exclusionValue: typeof message.diagnostic.exclusionValue === "string" ? message.diagnostic.exclusionValue : undefined,
+        pickerTileCount: typeof message.diagnostic.pickerTileCount === "number" ? message.diagnostic.pickerTileCount : undefined,
+        pickerMatchCount: typeof message.diagnostic.pickerMatchCount === "number" ? message.diagnostic.pickerMatchCount : undefined
       })
     };
   }
@@ -66,8 +80,13 @@ function isDiagnosticKind(value: unknown): value is DiagnosticKind {
     value === "missingPreferredAccount" ||
     value === "pickerSkipped" ||
     value === "rulesUpdated" ||
-    value === "identityRefreshed"
+    value === "identityRefreshed" ||
+    value === "excludedApp"
   );
+}
+
+function isAuthFlow(value: unknown): value is AuthFlow {
+  return value === "oauth" || value === "saml" || value === "wsfed" || value === "unknown";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

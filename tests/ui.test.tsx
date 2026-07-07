@@ -42,6 +42,8 @@ describe("extension UI surfaces", () => {
     expect(text).not.toContain("Mode details");
     expect(text).not.toContain("cleanest way to skip the picker");
     expect(text).not.toContain("Use another account");
+    expect(text).not.toContain("App exclusions");
+    expect(text).not.toContain("Exclude client ID");
   });
 
   test("popup saves valid account changes automatically", async () => {
@@ -101,7 +103,18 @@ describe("extension UI surfaces", () => {
         settings={settingsWith({
           preferredUpn: "user@example.com",
           diagnostics: [
-            diagnostic("autoPickedAccount", "Matched configured account.", 1)
+            {
+              ...diagnostic("autoPickedAccount", "Matched configured account.", 1),
+              flow: "oauth",
+              tenant: "common",
+              clientId: "app-123",
+              redirectHost: "portal.example.com",
+              redirectPath: "/callback",
+              ruleId: 1,
+              changedParams: ["login_hint", "domain_hint"],
+              pickerTileCount: 2,
+              pickerMatchCount: 1
+            }
           ]
         })}
         onSave={async () => undefined}
@@ -122,14 +135,55 @@ describe("extension UI surfaces", () => {
     expect(text).toContain("prompt=login");
     expect(text).toContain("prompt=consent");
     expect(text).toContain("prompt=none");
+    expect(text).toContain("App exclusions");
+    expect(text).toContain("Match by");
+    expect(text).toContain("Add exclusion");
+    expect(text).toContain("No app exclusions configured.");
     expect(text).toContain("Save settings");
     expect(text).toContain("Statistics");
     expect(text).toContain("Diagnostics data");
     expect(text).toContain("Matched configured account.");
+    expect(text).toContain("Event ID");
+    expect(text).toContain("Client ID");
+    expect(text).toContain("app-123");
+    expect(text).toContain("Host");
+    expect(text).toContain("portal.example.com");
+    expect(text).toContain("Exclude client ID");
+    expect(text).toContain("Exclude host");
     expect(text).not.toContain(removedProfileLabel);
     expect(text.indexOf("Save settings")).toBeLessThan(text.indexOf("Statistics"));
     expect(text.indexOf("Statistics")).toBeLessThan(text.indexOf("Diagnostics data"));
     expect(document.querySelector<HTMLDetailsElement>("details.mode-details")?.open).toBe(false);
+  });
+
+  test("diagnostics can add exclusions without duplicating them", async () => {
+    await render(
+      <SettingsEditor
+        settings={settingsWith({
+          preferredUpn: "user@example.com",
+          diagnostics: [
+            {
+              ...diagnostic("noMatchingAccount", "No matching account.", 1),
+              clientId: "app-123",
+              redirectHost: "portal.example.com"
+            }
+          ]
+        })}
+        onSave={async () => undefined}
+        onClearDiagnostics={async () => undefined}
+      />
+    );
+
+    await act(async () => getButton("Exclude client ID").click());
+
+    expect(pageText()).toContain("app-123");
+    expect(pageText()).toContain("Save settings to apply.");
+    expect(getButton("Client ID excluded").disabled).toBe(true);
+
+    await act(async () => getButton("Exclude host").click());
+
+    expect(pageText()).toContain("portal.example.com");
+    expect(getButton("Host excluded").disabled).toBe(true);
   });
 
   test("statistics summarize local usage data", () => {

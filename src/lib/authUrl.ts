@@ -1,10 +1,13 @@
+import { findMatchingAppExclusion, getAppContextFromUrl, type AppContext, type AppExclusionMatch } from "./appContext";
 import type { UseMyCurrentAccountSettings } from "./settings";
 
 export interface AuthUrlTransform {
   shouldRedirect: boolean;
   redirectUrl?: string;
   changedParams: string[];
-  skippedReason?: "disabled" | "missingPreferredAccount" | "unsupportedUrl" | "unchanged";
+  skippedReason?: "disabled" | "missingPreferredAccount" | "unsupportedUrl" | "unchanged" | "excludedApp";
+  appContext?: AppContext;
+  exclusionMatch?: AppExclusionMatch;
 }
 
 const MICROSOFT_LOGIN_HOST = "login.microsoftonline.com";
@@ -28,7 +31,8 @@ export function buildAuthUrlTransform(
   settings: Pick<
     UseMyCurrentAccountSettings,
     "enabled" | "preferredUpn" | "rewriteEnabled" | "suppressSelectAccountPrompt"
-  >
+  > &
+    Partial<Pick<UseMyCurrentAccountSettings, "appExclusions">>
 ): AuthUrlTransform {
   if (!settings.enabled || !settings.rewriteEnabled) {
     return { shouldRedirect: false, changedParams: [], skippedReason: "disabled" };
@@ -45,6 +49,18 @@ export function buildAuthUrlTransform(
   const changedParams: string[] = [];
   const path = url.pathname.toLowerCase();
   const domain = getPreferredDomain(settings.preferredUpn);
+  const appContext = getAppContextFromUrl(inputUrl);
+  const exclusionMatch = findMatchingAppExclusion(appContext, settings.appExclusions);
+
+  if (exclusionMatch) {
+    return {
+      shouldRedirect: false,
+      changedParams: [],
+      skippedReason: "excludedApp",
+      appContext,
+      exclusionMatch
+    };
+  }
 
   if (isAuthorizePath(path)) {
     setSearchParam(url, "login_hint", settings.preferredUpn, changedParams);
@@ -69,7 +85,8 @@ export function buildAuthUrlTransform(
   return {
     shouldRedirect: true,
     redirectUrl: url.toString(),
-    changedParams
+    changedParams,
+    appContext
   };
 }
 

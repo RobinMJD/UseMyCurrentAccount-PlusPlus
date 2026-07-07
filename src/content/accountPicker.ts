@@ -1,4 +1,5 @@
 import type { RuntimeResponse } from "../lib/messages";
+import { findMatchingAppExclusion, getAppContextFromUrl } from "../lib/appContext";
 import type { DiagnosticKind, UseMyCurrentAccountSettings } from "../lib/settings";
 
 export interface AccountTile {
@@ -14,10 +15,15 @@ export interface PickerResult {
     | "multipleMatches"
     | "disabled"
     | "missingPreferredAccount"
+    | "excludedApp"
     | "notPicker";
   matchedUpns: string[];
   tile?: AccountTile;
   message: string;
+  exclusionId?: string;
+  exclusionValue?: string;
+  pickerTileCount?: number;
+  pickerMatchCount?: number;
 }
 
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
@@ -58,7 +64,9 @@ export function findAccountTiles(root: ParentNode = document): AccountTile[] {
 
 export function chooseAccountTile(
   root: ParentNode,
-  settings: Pick<UseMyCurrentAccountSettings, "enabled" | "preferredUpn" | "aliases" | "autoPickEnabled">
+  settings: Pick<UseMyCurrentAccountSettings, "enabled" | "preferredUpn" | "aliases" | "autoPickEnabled"> &
+    Partial<Pick<UseMyCurrentAccountSettings, "appExclusions">>,
+  inputUrl = typeof location !== "undefined" ? location.href : ""
 ): PickerResult {
   if (!isAccountPickerPage(root)) {
     return { action: "notPicker", matchedUpns: [], message: "No Microsoft account picker was detected." };
@@ -74,22 +82,41 @@ export function chooseAccountTile(
     };
   }
 
+  const appContext = getAppContextFromUrl(inputUrl);
+  const exclusionMatch = findMatchingAppExclusion(appContext, settings.appExclusions || []);
+  if (exclusionMatch) {
+    return {
+      action: "excludedApp",
+      matchedUpns: [],
+      message: "Auto-pick skipped because this app is excluded.",
+      exclusionId: exclusionMatch.exclusion.id,
+      exclusionValue: exclusionMatch.value,
+      pickerTileCount: findAccountTiles(root).length,
+      pickerMatchCount: 0
+    };
+  }
+
   const acceptedUpns = new Set([settings.preferredUpn, ...settings.aliases].map(normalizeUpn).filter(Boolean) as string[]);
-  const matches = findAccountTiles(root).filter((tile) => acceptedUpns.has(tile.upn));
+  const tiles = findAccountTiles(root);
+  const matches = tiles.filter((tile) => acceptedUpns.has(tile.upn));
   const matchedUpns = [...new Set(matches.map((match) => match.upn))];
 
   if (!matches.length) {
     return {
       action: "noMatch",
       matchedUpns: [],
-      message: `No account tile matched the account to auto select.`
+      message: `No account tile matched the account to auto select.`,
+      pickerTileCount: tiles.length,
+      pickerMatchCount: 0
     };
   }
   if (matches.length > 1) {
     return {
       action: "multipleMatches",
       matchedUpns,
-      message: "Multiple account tiles matched the account to auto select; no account was clicked."
+      message: "Multiple account tiles matched the account to auto select; no account was clicked.",
+      pickerTileCount: tiles.length,
+      pickerMatchCount: matches.length
     };
   }
 
@@ -97,7 +124,9 @@ export function chooseAccountTile(
     action: "picked",
     matchedUpns,
     tile: matches[0],
-    message: `Selected ${matches[0].upn}.`
+    message: `Selected ${matches[0].upn}.`,
+    pickerTileCount: tiles.length,
+    pickerMatchCount: 1
   };
 }
 
@@ -133,7 +162,13 @@ async function recordPickerDiagnostic(result: PickerResult, settings: UseMyCurre
   if (!kind) {
     return;
   }
-  await sendDiagnostic(kind, result.message, settings, result.matchedUpns[0]);
+  await sendDiagnostic(kind, result.message, settings, {
+    matchedUpn: result.matchedUpns[0],
+    exclusionId: result.exclusionId,
+    exclusionValue: result.exclusionValue,
+    pickerTileCount: result.pickerTileCount,
+    pickerMatchCount: result.pickerMatchCount
+  });
 }
 
 async function recordUrlPreparedDiagnostic(settings: UseMyCurrentAccountSettings): Promise<void> {
@@ -155,25 +190,50 @@ async function recordUrlPreparedDiagnostic(settings: UseMyCurrentAccountSettings
   if (!hasAuthorizeHint && !hasFederationHint) {
     return;
   }
-  await sendDiagnostic("urlRewritten", "Microsoft sign-in URL is prepared for the account to auto select.", settings);
+  await sendDiagnostic("urlRewritten", "Microsoft sign-in URL is prepared for the account to auto select.", settings, {
+    ruleId: hasAuthorizeHint ? 1 : 3,
+    changedParams: hasAuthorizeHint
+      ? ["login_hint", ...(url.searchParams.get("domain_hint") === domain ? ["domain_hint"] : [])]
+      : ["whr"]
+  });
 }
 
 async function sendDiagnostic(
   kind: DiagnosticKind,
   message: string,
   settings: UseMyCurrentAccountSettings,
-  matchedUpn?: string
+  input: {
+    matchedUpn?: string;
+    ruleId?: number;
+    changedParams?: string[];
+    exclusionId?: string;
+    exclusionValue?: string;
+    pickerTileCount?: number;
+    pickerMatchCount?: number;
+  } = {}
 ): Promise<void> {
+  const appContext = getAppContextFromUrl(location.href);
   const diagnostic = {
-    id: `${new Date().toISOString()}:${kind}`,
     kind,
     occurredAt: new Date().toISOString(),
     message,
-    url: location.href,
+    url: appContext.sanitizedUrl,
+    sanitizedUrl: appContext.sanitizedUrl,
     preferredUpn: settings.preferredUpn,
-    matchedUpn
+    matchedUpn: input.matchedUpn,
+    flow: appContext.flow,
+    tenant: appContext.tenant,
+    clientId: appContext.clientId,
+    redirectHost: appContext.redirectHost,
+    redirectPath: appContext.redirectPath,
+    ruleId: input.ruleId,
+    changedParams: input.changedParams,
+    exclusionId: input.exclusionId,
+    exclusionValue: input.exclusionValue,
+    pickerTileCount: input.pickerTileCount,
+    pickerMatchCount: input.pickerMatchCount
   };
-  const diagnosticKey = `${kind}|${diagnostic.url}|${diagnostic.preferredUpn || ""}|${diagnostic.matchedUpn || ""}`;
+  const diagnosticKey = `${kind}|${diagnostic.url}|${diagnostic.preferredUpn || ""}|${diagnostic.matchedUpn || ""}|${diagnostic.exclusionValue || ""}`;
   if (recordedDiagnosticKeys.has(diagnosticKey)) {
     return;
   }
@@ -187,6 +247,7 @@ function getDiagnosticKind(action: PickerResult["action"]): DiagnosticKind | und
   if (action === "multipleMatches") return "multipleMatchingAccounts";
   if (action === "disabled") return "disabled";
   if (action === "missingPreferredAccount") return "missingPreferredAccount";
+  if (action === "excludedApp") return "excludedApp";
   return undefined;
 }
 

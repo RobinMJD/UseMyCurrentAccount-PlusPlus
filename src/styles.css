@@ -247,7 +247,8 @@ a {
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field select {
   width: 100%;
   border: 1px solid #cbd5e1;
   border-radius: 7px;
@@ -363,6 +364,7 @@ a {
 .account-panel,
 .behavior-panel,
 .diagnostics-panel,
+.exclusions-panel,
 .statistics-panel {
   display: grid;
   gap: 15px;
@@ -484,6 +486,59 @@ a {
   margin-top: 8px;
 }
 
+.exclusion-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.35fr) minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.exclusion-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.exclusion-list li {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.35fr) minmax(0, 1fr) minmax(120px, auto) auto;
+  gap: 10px;
+  align-items: center;
+  border-top: 1px solid #edf2f7;
+  padding-top: 9px;
+}
+
+.exclusion-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.exclusion-list input {
+  width: 18px;
+  height: 18px;
+  accent-color: #0f766e;
+}
+
+.exclusion-list strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #111827;
+  font-size: 13px;
+}
+
+.exclusion-list small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #64748b;
+  font-size: 11px;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -529,9 +584,16 @@ a {
 
 .diagnostics li {
   display: grid;
-  gap: 3px;
+  gap: 7px;
   border-top: 1px solid #edf2f7;
   padding-top: 9px;
+}
+
+.diagnostic-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .diagnostics span {
@@ -546,6 +608,38 @@ a {
   color: #111827;
   font-size: 13px;
   line-height: 1.35;
+}
+
+.diagnostic-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.diagnostic-details div {
+  min-width: 0;
+}
+
+.diagnostic-details dt {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.diagnostic-details dd {
+  margin: 1px 0 0;
+  overflow-wrap: anywhere;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.diagnostic-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .pagination-row {
@@ -606,6 +700,17 @@ a {
 
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .exclusion-form,
+  .exclusion-list li,
+  .diagnostic-details {
+    grid-template-columns: 1fr;
+  }
+
+  .diagnostic-heading {
+    align-items: flex-start;
+    display: grid;
   }
 
   .pagination-row {

@@ -71,4 +71,31 @@ describe("account picker", () => {
     expect(findAccountTiles(document)).toHaveLength(0);
     expect(chooseAccountTile(document, settings).action).toBe("noMatch");
   });
+
+  test("skips auto-pick for excluded apps", () => {
+    document.body.innerHTML = `
+      <h1>Pick an account</h1>
+      <div role="button">Admin User admin.user@example.com Connected to Windows</div>
+    `;
+    const result = chooseAccountTile(
+      document,
+      {
+        ...settings,
+        appExclusions: [
+          {
+            id: "exclusion-1",
+            enabled: true,
+            matchType: "clientId",
+            value: "app-123",
+            createdAt: "2026-06-16T10:00:00.000Z"
+          }
+        ]
+      },
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=app-123"
+    );
+
+    expect(result.action).toBe("excludedApp");
+    expect(result.exclusionValue).toBe("app-123");
+    expect(result.pickerTileCount).toBe(1);
+  });
 });

@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import { sanitizeStoredDiagnosticUrl } from "../lib/appContext";
 import { getBadgeState } from "../lib/badge";
-import { mergeSettings, normalizeUpn, type DiagnosticEvent, type UseMyCurrentAccountSettings } from "../lib/settings";
+import {
+  createAppExclusion,
+  mergeSettings,
+  normalizeAppExclusionValue,
+  normalizeUpn,
+  type AppExclusion,
+  type AppExclusionMatchType,
+  type DiagnosticEvent,
+  type UseMyCurrentAccountSettings
+} from "../lib/settings";
 
 const DIAGNOSTICS_PAGE_SIZE = 10;
 
@@ -18,6 +28,8 @@ interface UsageStat {
 
 export function SettingsEditor({ settings, onSave, onClearDiagnostics }: SettingsEditorProps) {
   const [draft, setDraft] = useState(() => settingsToDraft(settings));
+  const [newExclusionType, setNewExclusionType] = useState<AppExclusionMatchType>("clientId");
+  const [newExclusionValue, setNewExclusionValue] = useState("");
   const [diagnosticsPage, setDiagnosticsPage] = useState(0);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,6 +50,7 @@ export function SettingsEditor({ settings, onSave, onClearDiagnostics }: Setting
         ...draft,
         preferredUpn,
         aliases: draft.aliasesText.split(/[\n,]+/).map((item) => item.trim()),
+        appExclusions: draft.appExclusions,
         diagnostics: settings.diagnostics
       }),
     [draft, preferredUpn, settings]
@@ -79,6 +92,50 @@ export function SettingsEditor({ settings, onSave, onClearDiagnostics }: Setting
     } finally {
       setBusy(false);
     }
+  }
+
+  function addManualExclusion() {
+    if (addExclusion(newExclusionType, newExclusionValue)) {
+      setNewExclusionValue("");
+    }
+  }
+
+  function addExclusion(
+    matchType: AppExclusionMatchType,
+    value: string | undefined,
+    sourceDiagnosticId?: string
+  ): boolean {
+    const exclusion = createAppExclusion(matchType, value, { sourceDiagnosticId });
+    if (!exclusion) {
+      setMessage(matchType === "clientId" ? "Enter a valid client ID." : "Enter a valid redirect or reply host.");
+      return false;
+    }
+    if (hasDraftExclusion(draft.appExclusions, matchType, exclusion.value)) {
+      setMessage("Exclusion already added.");
+      return false;
+    }
+    setDraft({
+      ...draft,
+      appExclusions: [exclusion, ...draft.appExclusions]
+    });
+    setMessage("Save settings to apply.");
+    return true;
+  }
+
+  function toggleExclusion(id: string, enabled: boolean) {
+    setDraft({
+      ...draft,
+      appExclusions: draft.appExclusions.map((item) => item.id === id ? { ...item, enabled } : item)
+    });
+    setMessage("Save settings to apply.");
+  }
+
+  function removeExclusion(id: string) {
+    setDraft({
+      ...draft,
+      appExclusions: draft.appExclusions.filter((item) => item.id !== id)
+    });
+    setMessage("Save settings to apply.");
   }
 
   return (
@@ -215,6 +272,62 @@ export function SettingsEditor({ settings, onSave, onClearDiagnostics }: Setting
           </details>
         </section>
 
+        <section className="panel exclusions-panel wide-panel">
+          <div className="section-title">
+            <div>
+              <h2>App exclusions</h2>
+              <p>Skip URL rewrite and auto-pick for specific Microsoft apps.</p>
+            </div>
+          </div>
+
+          <div className="exclusion-form">
+            <label className="field">
+              <span>Match by</span>
+              <select
+                aria-label="Exclusion type"
+                value={newExclusionType}
+                onChange={(event) => setNewExclusionType(event.currentTarget.value as AppExclusionMatchType)}
+              >
+                <option value="clientId">Client ID</option>
+                <option value="redirectHost">Redirect/reply host</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Value</span>
+              <input
+                aria-label="Exclusion value"
+                placeholder={newExclusionType === "clientId" ? "application-client-id" : "app.example.com"}
+                value={newExclusionValue}
+                onChange={(event) => setNewExclusionValue(event.currentTarget.value)}
+              />
+            </label>
+            <button type="button" onClick={addManualExclusion}>Add exclusion</button>
+          </div>
+
+          {draft.appExclusions.length ? (
+            <ul className="exclusion-list">
+              {draft.appExclusions.map((item) => (
+                <li key={item.id}>
+                  <label>
+                    <input
+                      aria-label={`Enable exclusion ${item.value}`}
+                      type="checkbox"
+                      checked={item.enabled}
+                      onChange={(event) => toggleExclusion(item.id, event.currentTarget.checked)}
+                    />
+                    <span>{formatExclusionType(item.matchType)}</span>
+                  </label>
+                  <strong>{item.value}</strong>
+                  <small>{item.sourceDiagnosticId ? `From ${item.sourceDiagnosticId}` : item.id}</small>
+                  <button type="button" onClick={() => removeExclusion(item.id)}>Remove</button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty">No app exclusions configured.</p>
+          )}
+        </section>
+
         <section className="save-bar wide-panel">
           <button type="button" className="primary" disabled={!canSave} onClick={() => void save()}>
             Save settings
@@ -258,9 +371,36 @@ export function SettingsEditor({ settings, onSave, onClearDiagnostics }: Setting
               <ol className="diagnostics">
                 {visibleDiagnostics.map((item) => (
                   <li key={item.id}>
-                    <span>{item.kind}</span>
+                    <div className="diagnostic-heading">
+                      <span>{item.kind}</span>
+                      <time>{item.occurredAt.slice(0, 19).replace("T", " ")}</time>
+                    </div>
                     <strong>{item.message}</strong>
-                    <time>{item.occurredAt.slice(0, 19).replace("T", " ")}</time>
+                    <dl className="diagnostic-details">
+                      {getDiagnosticDetails(item).map((detail) => (
+                        <div key={detail.label}>
+                          <dt>{detail.label}</dt>
+                          <dd>{detail.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {getDiagnosticExclusionActions(item).length ? (
+                      <div className="diagnostic-actions">
+                        {getDiagnosticExclusionActions(item).map((action) => {
+                          const isAdded = hasDraftExclusion(draft.appExclusions, action.matchType, action.value);
+                          return (
+                            <button
+                              type="button"
+                              key={`${item.id}:${action.matchType}`}
+                              disabled={isAdded}
+                              onClick={() => addExclusion(action.matchType, action.value, item.id)}
+                            >
+                              {isAdded ? action.addedLabel : action.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ol>
@@ -305,7 +445,8 @@ export function settingsToDraft(settings: UseMyCurrentAccountSettings) {
     aliasesText: settings.aliases.join("\n"),
     rewriteEnabled: settings.rewriteEnabled,
     autoPickEnabled: settings.autoPickEnabled,
-    suppressSelectAccountPrompt: settings.suppressSelectAccountPrompt
+    suppressSelectAccountPrompt: settings.suppressSelectAccountPrompt,
+    appExclusions: settings.appExclusions
   };
 }
 
@@ -419,4 +560,78 @@ function countDiagnostics(diagnostics: DiagnosticEvent[]) {
   }
 
   return counts;
+}
+
+function hasDraftExclusion(exclusions: AppExclusion[], matchType: AppExclusionMatchType, value: string | undefined): boolean {
+  const normalizedValue = normalizeAppExclusionValue(matchType, value);
+  return Boolean(normalizedValue && exclusions.some((item) => item.matchType === matchType && item.value === normalizedValue));
+}
+
+function getDiagnosticExclusionActions(item: DiagnosticEvent) {
+  const actions: Array<{
+    matchType: AppExclusionMatchType;
+    value: string;
+    label: string;
+    addedLabel: string;
+  }> = [];
+
+  if (item.clientId) {
+    actions.push({
+      matchType: "clientId",
+      value: item.clientId,
+      label: "Exclude client ID",
+      addedLabel: "Client ID excluded"
+    });
+  }
+  if (item.redirectHost) {
+    actions.push({
+      matchType: "redirectHost",
+      value: item.redirectHost,
+      label: "Exclude host",
+      addedLabel: "Host excluded"
+    });
+  }
+  return actions;
+}
+
+function getDiagnosticDetails(item: DiagnosticEvent): Array<{ label: string; value: string }> {
+  const details: Array<{ label: string; value: string | undefined }> = [
+    { label: "Event ID", value: item.id },
+    { label: "Flow", value: formatFlow(item.flow) },
+    { label: "Tenant", value: item.tenant },
+    { label: "Client ID", value: item.clientId },
+    { label: "Host", value: item.redirectHost },
+    { label: "Path", value: item.redirectPath },
+    { label: "Rule", value: item.ruleId ? String(item.ruleId) : undefined },
+    { label: "Params", value: item.changedParams?.join(", ") },
+    { label: "Exclusion", value: formatExclusionDetail(item) },
+    { label: "Picker", value: formatPickerCounts(item) },
+    { label: "URL", value: sanitizeStoredDiagnosticUrl(item.sanitizedUrl || item.url) }
+  ];
+  return details.flatMap((detail) => detail.value ? [{ label: detail.label, value: detail.value }] : []);
+}
+
+function formatExclusionType(matchType: AppExclusionMatchType): string {
+  return matchType === "clientId" ? "Client ID" : "Redirect/reply host";
+}
+
+function formatFlow(flow: DiagnosticEvent["flow"]): string | undefined {
+  if (flow === "oauth") return "OAuth/OIDC";
+  if (flow === "saml") return "SAML";
+  if (flow === "wsfed") return "WS-Fed";
+  return flow === "unknown" ? "Unknown" : undefined;
+}
+
+function formatExclusionDetail(item: DiagnosticEvent): string | undefined {
+  if (!item.exclusionValue && !item.exclusionId) {
+    return undefined;
+  }
+  return [item.exclusionValue, item.exclusionId].filter(Boolean).join(" / ");
+}
+
+function formatPickerCounts(item: DiagnosticEvent): string | undefined {
+  if (item.pickerTileCount === undefined && item.pickerMatchCount === undefined) {
+    return undefined;
+  }
+  return `${item.pickerMatchCount ?? 0} match(es) from ${item.pickerTileCount ?? 0} tile(s)`;
 }

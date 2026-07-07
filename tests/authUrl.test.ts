@@ -71,6 +71,28 @@ describe("auth URL rewriting", () => {
     expect(buildAuthUrlTransform("https://login.microsoftonline.com/common/oauth2/v2.0/authorize", { ...settings, preferredUpn: undefined }).shouldRedirect).toBe(false);
   });
 
+  test("skips rewrite for excluded apps", () => {
+    const result = buildAuthUrlTransform(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=app-123&redirect_uri=https%3A%2F%2Fportal.example.com%2Fcb",
+      {
+        ...settings,
+        appExclusions: [
+          {
+            id: "exclusion-1",
+            enabled: true,
+            matchType: "clientId",
+            value: "app-123",
+            createdAt: "2026-06-16T10:00:00.000Z"
+          }
+        ]
+      }
+    );
+
+    expect(result.shouldRedirect).toBe(false);
+    expect(result.skippedReason).toBe("excludedApp");
+    expect(result.exclusionMatch?.value).toBe("app-123");
+  });
+
   test("classifies supported Microsoft login URLs", () => {
     expect(shouldRewriteMicrosoftLoginUrl("https://login.microsoftonline.com/common/oauth2/v2.0/authorize")).toBe(true);
     expect(shouldRewriteMicrosoftLoginUrl("https://login.microsoftonline.com/common/saml2")).toBe(true);
