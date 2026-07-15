@@ -40,3 +40,4 @@ Never commit OAuth credentials or tokens.
 6. Verify the GitHub release ZIP checksum and the Chrome Web Store submission state.
 
 The release workflow refuses tags that are not on `main`, rebuilds from the exact tagged commit, and sends the same verified ZIP to both GitHub Releases and the Chrome Web Store API.
+If an older revision is still pending review, the publisher script cancels only that active submission before uploading and submitting the newer tagged version.

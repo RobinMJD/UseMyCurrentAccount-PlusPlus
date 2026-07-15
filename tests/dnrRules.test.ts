@@ -40,6 +40,56 @@ describe("dynamic DNR rules", () => {
     expect(redirectRules).toHaveLength(3);
   });
 
+  test("removes existing hint values before adding one canonical value", () => {
+    const rules = buildDynamicRules(mergeSettings({ preferredUpn: "user@example.com" }));
+    const oauthTransform = rules.find((rule) => rule.id === 1)?.action.redirect?.transform?.queryTransform;
+    const federationTransform = rules.find((rule) => rule.id === 3)?.action.redirect?.transform?.queryTransform;
+
+    expect(oauthTransform?.removeParams).toEqual(["login_hint", "domain_hint"]);
+    expect(oauthTransform?.addOrReplaceParams).toEqual([
+      { key: "login_hint", value: "user@example.com" },
+      { key: "domain_hint", value: "example.com" }
+    ]);
+    expect(federationTransform?.removeParams).toEqual(["whr"]);
+    expect(federationTransform?.addOrReplaceParams).toEqual([{ key: "whr", value: "example.com" }]);
+
+    const approvedRules = buildDynamicRules(mergeSettings({
+      preferredUpn: "user@example.com",
+      requireAppApproval: true,
+      appApprovals: [
+        {
+          id: "client-approval",
+          enabled: true,
+          matchType: "clientId",
+          value: "app-123",
+          createdAt: "2026-07-15T20:00:00.000Z"
+        },
+        {
+          id: "host-approval",
+          enabled: true,
+          matchType: "redirectHost",
+          value: "portal.example.com",
+          createdAt: "2026-07-15T20:00:00.000Z"
+        }
+      ]
+    })).filter((rule) => rule.priority === 1);
+    const approvedOauthTransforms = approvedRules
+      .filter((rule) => rule.condition.regexFilter?.includes("oauth2"))
+      .map((rule) => rule.action.redirect?.transform?.queryTransform);
+    const approvedFederationTransforms = approvedRules
+      .filter((rule) => rule.condition.regexFilter?.includes("saml2|wsfed"))
+      .map((rule) => rule.action.redirect?.transform?.queryTransform);
+
+    expect(approvedOauthTransforms.length).toBeGreaterThan(0);
+    expect(approvedOauthTransforms.every((transform) => (
+      JSON.stringify(transform?.removeParams) === JSON.stringify(["login_hint", "domain_hint"])
+    ))).toBe(true);
+    expect(approvedFederationTransforms.length).toBeGreaterThan(0);
+    expect(approvedFederationTransforms.every((transform) => (
+      JSON.stringify(transform?.removeParams) === JSON.stringify(["whr"])
+    ))).toBe(true);
+  });
+
   test("prompt suppression rule only targets exact select-account prompts", () => {
     const rules = buildDynamicRules(mergeSettings({ preferredUpn: "user@example.com" }));
     const promptRule = rules.find((rule) => rule.id === 2);

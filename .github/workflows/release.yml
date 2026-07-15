@@ -6,7 +6,7 @@ on:
       - "v*"
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: chrome-web-store-release
   cancel-in-progress: false
 
 permissions:

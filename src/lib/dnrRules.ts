@@ -73,6 +73,7 @@ function buildBroadRedirectRules(
         redirect: {
           transform: {
             queryTransform: {
+              removeParams: authorizeParamUpdates.map(({ key }) => key),
               addOrReplaceParams: authorizeParamUpdates
             }
           }
@@ -91,6 +92,7 @@ function buildBroadRedirectRules(
         redirect: {
           transform: {
             queryTransform: {
+              removeParams: ["whr"],
               addOrReplaceParams: [{ key: "whr", value: preferredDomain }]
             }
           }
@@ -148,6 +150,7 @@ function buildApprovalRedirectRules(
           redirect: {
             transform: {
               queryTransform: {
+                removeParams: authorizeParamUpdates.map(({ key }) => key),
                 addOrReplaceParams: authorizeParamUpdates
               }
             }
@@ -200,6 +203,7 @@ function buildApprovalRedirectRules(
           redirect: {
             transform: {
               queryTransform: {
+                removeParams: ["whr"],
                 addOrReplaceParams: [{ key: "whr", value: preferredDomain }]
               }
             }

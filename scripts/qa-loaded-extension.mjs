@@ -158,8 +158,10 @@ const qa = {
   settingsSave: false,
   profileClearPersistence: false,
   oauthTransform: false,
+  duplicateHintsCanonicalized: false,
   unapprovedUntouched: false,
   federationTransform: false,
+  duplicateFederationHintCanonicalized: false,
   pickerExactMatch: false,
   pickerNoMatch: false,
   pickerMultipleMatch: false,
@@ -354,6 +356,23 @@ try {
   await waitForDiagnosticKind(cdp, settingsPage.sessionId, "autoPickedAccount");
   qa.pickerExactMatch = true;
 
+  const repeatedHintsResult = await runSimpleMicrosoftFixture(
+    cdp,
+    pickerPage.sessionId,
+    "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=11111111-2222-3333-4444-555555555555&redirect_uri=https%3A%2F%2Fportal.azure.com%2Fcallback&login_hint=admin%40contoso.com&login_hint=other%40contoso.com&domain_hint=contoso.com&domain_hint=other.contoso.com&state=qa-duplicate-hints"
+  );
+  const repeatedHintsUrl = new URL(repeatedHintsResult.interceptedUrl);
+  assert(
+    JSON.stringify(repeatedHintsUrl.searchParams.getAll("login_hint")) === JSON.stringify(["admin@contoso.com"]),
+    `The OAuth navigation retained repeated login_hint values: ${repeatedHintsUrl.searchParams.getAll("login_hint").join(", ")}`
+  );
+  assert(
+    JSON.stringify(repeatedHintsUrl.searchParams.getAll("domain_hint")) === JSON.stringify(["contoso.com"]),
+    `The OAuth navigation retained repeated domain_hint values: ${repeatedHintsUrl.searchParams.getAll("domain_hint").join(", ")}`
+  );
+  assert(repeatedHintsUrl.searchParams.get("state") === "qa-duplicate-hints", "The duplicate-hint rewrite did not preserve state.");
+  qa.duplicateHintsCanonicalized = true;
+
   const noMatchResult = await runPickerFixture(cdp, pickerPage.sessionId, "no-match");
   assert(!noMatchResult.clicked && noMatchResult.clickCount === "0", "A no-match picker fixture clicked a tile instead of failing closed.");
   await waitForDiagnosticKind(cdp, settingsPage.sessionId, "noMatchingAccount");
@@ -382,13 +401,17 @@ try {
   const federationResult = await runSimpleMicrosoftFixture(
     cdp,
     pickerPage.sessionId,
-    "https://login.microsoftonline.com/organizations/wsfed?wtrealm=https%3A%2F%2Fportal.azure.com%2Fapp&wa=wsignin1.0"
+    "https://login.microsoftonline.com/organizations/wsfed?wtrealm=https%3A%2F%2Fportal.azure.com%2Fapp&wa=wsignin1.0&whr=contoso.com&whr=other.contoso.com"
   );
   const federationUrl = new URL(federationResult.interceptedUrl);
-  assert(federationUrl.searchParams.get("whr") === "contoso.com", "The approved WS-Fed navigation did not add whr.");
+  assert(
+    JSON.stringify(federationUrl.searchParams.getAll("whr")) === JSON.stringify(["contoso.com"]),
+    `The approved WS-Fed navigation did not canonicalize whr: ${federationUrl.searchParams.getAll("whr").join(", ")}`
+  );
   assert(federationUrl.searchParams.get("wa") === "wsignin1.0", "The approved WS-Fed navigation did not preserve wa.");
   assert(federationUrl.searchParams.get("wtrealm") === "https://portal.azure.com/app", "The approved WS-Fed navigation did not preserve wtrealm.");
   qa.federationTransform = true;
+  qa.duplicateFederationHintCanonicalized = true;
 
   await seedDiagnostics(cdp, settingsPage.sessionId);
   await normalizeDiagnosticTimes(cdp, settingsPage.sessionId);
@@ -476,6 +499,7 @@ try {
     badge,
     transformProof: {
       approvedOauthUrl: exactResult.interceptedUrl,
+      repeatedHintsOauthUrl: repeatedHintsResult.interceptedUrl,
       unapprovedOauthUrl: unapprovedResult.interceptedUrl,
       approvedFederationUrl: federationResult.interceptedUrl
     },

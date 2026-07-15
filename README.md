@@ -4,7 +4,7 @@ UseMyCurrentAccount++ is a Chromium Manifest V3 extension for Microsoft Edge and
 
 It is a full rewrite inspired by Claire Novotny LLC's original [UseMyCurrentAccount](https://github.com/novotnyllc/UseMyCurrentAccount) extension, with a modern MV3 architecture, editable account targeting, safer diagnostics, and a fail-closed account-picker fallback.
 
-Current version: **v1.1.0**
+Current version: **v1.1.1**
 
 ## What It Does
 

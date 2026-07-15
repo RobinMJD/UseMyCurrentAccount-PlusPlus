@@ -29,6 +29,19 @@ describe("auth URL rewriting", () => {
     expect(new URL(result.redirectUrl!).searchParams.get("login_hint")).toBe(settings.preferredUpn);
   });
 
+  test("canonicalizes repeated login and domain hints", () => {
+    const result = buildAuthUrlTransform(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=abc&login_hint=admin.user%40example.com&login_hint=other%40example.com&domain_hint=example.com&domain_hint=other.example",
+      settings
+    );
+
+    expect(result.shouldRedirect).toBe(true);
+    const url = new URL(result.redirectUrl!);
+    expect(url.searchParams.getAll("login_hint")).toEqual(["admin.user@example.com"]);
+    expect(url.searchParams.getAll("domain_hint")).toEqual(["example.com"]);
+    expect(url.searchParams.get("client_id")).toBe("abc");
+  });
+
   test("adds whr for saml and wsfed URLs", () => {
     const saml = buildAuthUrlTransform("https://login.microsoftonline.com/common/saml2?SAMLRequest=abc", settings);
     const wsfed = buildAuthUrlTransform("https://login.microsoftonline.com/common/wsfed?wa=wsignin1.0", settings);

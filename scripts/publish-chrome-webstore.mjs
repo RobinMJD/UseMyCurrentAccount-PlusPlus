@@ -37,8 +37,21 @@ export function buildChromeWebStoreEndpoints({ publisherId, extensionId }) {
     tokenUrl: TOKEN_URL,
     uploadUrl: `${WEBSTORE_API_BASE}/upload/v2/publishers/${encodedPublisher}/items/${encodedExtension}:upload`,
     fetchStatusUrl: `${WEBSTORE_API_BASE}/v2/publishers/${encodedPublisher}/items/${encodedExtension}:fetchStatus`,
+    cancelSubmissionUrl: `${WEBSTORE_API_BASE}/v2/publishers/${encodedPublisher}/items/${encodedExtension}:cancelSubmission`,
     publishUrl: `${WEBSTORE_API_BASE}/v2/publishers/${encodedPublisher}/items/${encodedExtension}:publish`
   };
+}
+
+export function getSubmittedItemState(payload) {
+  const state =
+    payload?.submittedItemRevisionStatus?.state ||
+    payload?.item?.submittedItemRevisionStatus?.state ||
+    payload?.status?.submittedItemRevisionStatus?.state;
+  return typeof state === "string" ? state : "";
+}
+
+export function isPendingSubmission(payload) {
+  return getSubmittedItemState(payload).toUpperCase() === "PENDING_REVIEW";
 }
 
 export function getUploadState(payload) {
@@ -81,6 +94,7 @@ async function main() {
 
   const endpoints = buildChromeWebStoreEndpoints(config);
   const accessToken = await refreshAccessToken(endpoints.tokenUrl, config);
+  await cancelPendingSubmissionIfNeeded(endpoints, accessToken);
   const uploadPayload = await uploadPackage(endpoints.uploadUrl, config.zipPath, accessToken);
   const finalUploadPayload = isUploadInProgress(uploadPayload)
     ? await pollUploadStatus(endpoints.fetchStatusUrl, accessToken, config.pollAttempts, config.pollIntervalMs)
@@ -90,6 +104,21 @@ async function main() {
   const publishPayload = await publishItem(endpoints.publishUrl, accessToken);
   console.log(`Chrome Web Store publish submitted for ${basename(config.zipPath)}.`);
   console.log(sanitizeChromeWebStoreMessage(JSON.stringify(publishPayload)));
+}
+
+export async function cancelPendingSubmissionIfNeeded(endpoints, accessToken, requestJson = fetchJson) {
+  const statusPayload = await requestJson(endpoints.fetchStatusUrl, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!isPendingSubmission(statusPayload)) return false;
+
+  console.log("Cancelling the older pending Chrome Web Store submission...");
+  await requestJson(endpoints.cancelSubmissionUrl, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  return true;
 }
 
 async function refreshAccessToken(tokenUrl, config) {

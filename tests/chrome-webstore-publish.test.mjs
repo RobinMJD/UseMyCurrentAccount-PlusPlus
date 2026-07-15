@@ -2,8 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import {
   buildChromeWebStoreEndpoints,
+  cancelPendingSubmissionIfNeeded,
   getMissingChromeWebStoreConfig,
+  getSubmittedItemState,
   getUploadState,
+  isPendingSubmission,
   isUploadFailure,
   isUploadInProgress,
   isUploadSuccess,
@@ -31,9 +34,39 @@ describe("Chrome Web Store publish script", () => {
     expect(endpoints.fetchStatusUrl).toBe(
       "https://chromewebstore.googleapis.com/v2/publishers/publisher%2Fwith%20space/items/item%2Fwith%20space:fetchStatus"
     );
+    expect(endpoints.cancelSubmissionUrl).toBe(
+      "https://chromewebstore.googleapis.com/v2/publishers/publisher%2Fwith%20space/items/item%2Fwith%20space:cancelSubmission"
+    );
     expect(endpoints.publishUrl).toBe(
       "https://chromewebstore.googleapis.com/v2/publishers/publisher%2Fwith%20space/items/item%2Fwith%20space:publish"
     );
+  });
+
+  test("detects only an active pending review for superseding", () => {
+    expect(getSubmittedItemState({ submittedItemRevisionStatus: { state: "PENDING_REVIEW" } })).toBe("PENDING_REVIEW");
+    expect(isPendingSubmission({ submittedItemRevisionStatus: { state: "PENDING_REVIEW" } })).toBe(true);
+    expect(isPendingSubmission({ submittedItemRevisionStatus: { state: "PUBLISHED" } })).toBe(false);
+    expect(isPendingSubmission({})).toBe(false);
+  });
+
+  test("cancels an older pending review before a replacement upload", async () => {
+    const requests = [];
+    const cancelled = await cancelPendingSubmissionIfNeeded(
+      { fetchStatusUrl: "https://store.test/status", cancelSubmissionUrl: "https://store.test/cancel" },
+      "test-access-token",
+      async (url, init) => {
+        requests.push({ url, method: init.method, authorization: init.headers.Authorization });
+        return url.endsWith("/status")
+          ? { submittedItemRevisionStatus: { state: "PENDING_REVIEW" } }
+          : {};
+      }
+    );
+
+    expect(cancelled).toBe(true);
+    expect(requests).toEqual([
+      { url: "https://store.test/status", method: "GET", authorization: "Bearer test-access-token" },
+      { url: "https://store.test/cancel", method: "POST", authorization: "Bearer test-access-token" }
+    ]);
   });
 
   test("classifies top-level and nested upload states", () => {
@@ -57,6 +90,7 @@ describe("release workflow", () => {
     const workflow = readFileSync(".github/workflows/release.yml", "utf8");
     expect(workflow).toContain("Publish to Chrome Web Store");
     expect(workflow).toContain("environment: chrome-web-store");
+    expect(workflow).toContain("group: chrome-web-store-release");
     expect(workflow).toContain("CHROME_WEBSTORE_CLIENT_ID");
     expect(workflow).toContain("CHROME_WEBSTORE_REFRESH_TOKEN");
     expect(workflow).toContain("scripts/publish-chrome-webstore.mjs");

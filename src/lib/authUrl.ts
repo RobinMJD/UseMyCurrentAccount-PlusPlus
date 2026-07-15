@@ -116,7 +116,8 @@ export function buildAuthUrlTransform(
 }
 
 function setSearchParam(url: URL, name: string, value: string, changedParams: string[]): void {
-  if (url.searchParams.get(name) === value) {
+  const currentValues = url.searchParams.getAll(name);
+  if (currentValues.length === 1 && currentValues[0] === value) {
     return;
   }
   url.searchParams.set(name, value);
