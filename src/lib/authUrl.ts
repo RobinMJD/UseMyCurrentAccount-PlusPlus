@@ -1,13 +1,27 @@
-import { findMatchingAppExclusion, getAppContextFromUrl, type AppContext, type AppExclusionMatch } from "./appContext";
+import {
+  findMatchingAppApproval,
+  findMatchingAppExclusion,
+  getAppContextFromUrl,
+  type AppApprovalMatch,
+  type AppContext,
+  type AppExclusionMatch
+} from "./appContext";
 import type { UseMyCurrentAccountSettings } from "./settings";
 
 export interface AuthUrlTransform {
   shouldRedirect: boolean;
   redirectUrl?: string;
   changedParams: string[];
-  skippedReason?: "disabled" | "missingPreferredAccount" | "unsupportedUrl" | "unchanged" | "excludedApp";
+  skippedReason?:
+    | "disabled"
+    | "missingPreferredAccount"
+    | "unsupportedUrl"
+    | "unchanged"
+    | "excludedApp"
+    | "approvalRequired";
   appContext?: AppContext;
   exclusionMatch?: AppExclusionMatch;
+  approvalMatch?: AppApprovalMatch;
 }
 
 const MICROSOFT_LOGIN_HOST = "login.microsoftonline.com";
@@ -32,7 +46,7 @@ export function buildAuthUrlTransform(
     UseMyCurrentAccountSettings,
     "enabled" | "preferredUpn" | "rewriteEnabled" | "suppressSelectAccountPrompt"
   > &
-    Partial<Pick<UseMyCurrentAccountSettings, "appExclusions">>
+    Partial<Pick<UseMyCurrentAccountSettings, "appApprovals" | "appExclusions" | "requireAppApproval">>
 ): AuthUrlTransform {
   if (!settings.enabled || !settings.rewriteEnabled) {
     return { shouldRedirect: false, changedParams: [], skippedReason: "disabled" };
@@ -51,6 +65,7 @@ export function buildAuthUrlTransform(
   const domain = getPreferredDomain(settings.preferredUpn);
   const appContext = getAppContextFromUrl(inputUrl);
   const exclusionMatch = findMatchingAppExclusion(appContext, settings.appExclusions);
+  const approvalMatch = findMatchingAppApproval(appContext, settings.appApprovals);
 
   if (exclusionMatch) {
     return {
@@ -59,6 +74,15 @@ export function buildAuthUrlTransform(
       skippedReason: "excludedApp",
       appContext,
       exclusionMatch
+    };
+  }
+
+  if (settings.requireAppApproval && !approvalMatch) {
+    return {
+      shouldRedirect: false,
+      changedParams: [],
+      skippedReason: "approvalRequired",
+      appContext
     };
   }
 
@@ -86,7 +110,8 @@ export function buildAuthUrlTransform(
     shouldRedirect: true,
     redirectUrl: url.toString(),
     changedParams,
-    appContext
+    appContext,
+    ...(approvalMatch ? { approvalMatch } : {})
   };
 }
 
@@ -99,18 +124,15 @@ function setSearchParam(url: URL, name: string, value: string, changedParams: st
 }
 
 function removeSelectAccountPrompt(url: URL, changedParams: string[]): void {
-  const prompt = url.searchParams.get("prompt");
-  if (!prompt) {
+  const prompts = url.searchParams.getAll("prompt");
+  if (!prompts.includes("select_account")) {
     return;
   }
-  const values = prompt.split(/\s+/).filter((value) => value && value !== "select_account");
-  if (values.length === prompt.split(/\s+/).filter(Boolean).length) {
-    return;
-  }
-  if (values.length) {
-    url.searchParams.set("prompt", values.join(" "));
-  } else {
-    url.searchParams.delete("prompt");
+  url.searchParams.delete("prompt");
+  for (const prompt of prompts) {
+    if (prompt !== "select_account") {
+      url.searchParams.append("prompt", prompt);
+    }
   }
   changedParams.push("prompt");
 }

@@ -12,8 +12,7 @@ export default defineConfig({
       input: {
         popup: entry("popup.html"),
         settings: entry("settings.html"),
-        background: entry("src/background.ts"),
-        accountPicker: entry("src/content/accountPicker.ts")
+        background: entry("src/background.ts")
       },
       output: {
         entryFileNames: "[name].js",

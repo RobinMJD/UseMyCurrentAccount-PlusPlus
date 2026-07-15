@@ -1,5 +1,5 @@
 import type { RuntimeResponse } from "../lib/messages";
-import { findMatchingAppExclusion, getAppContextFromUrl } from "../lib/appContext";
+import { findMatchingAppApproval, findMatchingAppExclusion, getAppContextFromUrl } from "../lib/appContext";
 import type { DiagnosticKind, UseMyCurrentAccountSettings } from "../lib/settings";
 
 export interface AccountTile {
@@ -16,6 +16,7 @@ export interface PickerResult {
     | "disabled"
     | "missingPreferredAccount"
     | "excludedApp"
+    | "approvalRequired"
     | "notPicker";
   matchedUpns: string[];
   tile?: AccountTile;
@@ -28,13 +29,52 @@ export interface PickerResult {
 
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const CLICKABLE_SELECTOR = "button, [role='button'], [tabindex='0'], [data-test-id], .table, .row, .accountButton";
+const HEADING_SELECTOR = "h1, h2, [role='heading']";
 const UPN_PATTERN = /^[^\s@<>()[\]\\,;:"']+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+const APP_CONTEXT_SESSION_KEY = "useMyCurrentAccountPlus.appContext.v1";
+const APP_CONTEXT_MAX_AGE_MS = 10 * 60 * 1000;
+const PICKER_HEADING_PATTERNS = [
+  /^pick an account$/iu,
+  /^(?:choisir|sélectionner) un compte$/iu,
+  /^(?:elige|elegir) una cuenta$/iu,
+  /^konto auswählen$/iu,
+  /^scegli un account$/iu,
+  /^escolh(?:a|er) uma conta$/iu,
+  /^een account kiezen$/iu,
+  /^wybierz konto$/iu,
+  /^アカウントを選択$/u,
+  /^계정 선택$/u,
+  /^选择(?:帐户|账户)$/u
+];
+const OTHER_ACCOUNT_PATTERNS = [
+  /^use another account(?:$|\s)/iu,
+  /^utiliser un autre compte(?:$|\s)/iu,
+  /^usar otra cuenta(?:$|\s)/iu,
+  /^anderes konto verwenden(?:$|\s)/iu,
+  /^usa un altro account(?:$|\s)/iu,
+  /^usar outra conta(?:$|\s)/iu,
+  /^een ander account gebruiken(?:$|\s)/iu,
+  /^użyj innego konta(?:$|\s)/iu,
+  /^別のアカウントを使用する(?:$|\s)/u,
+  /^다른 계정 사용(?:$|\s)/u,
+  /^使用其他(?:帐户|账户)(?:$|\s)/u
+];
 let lastClickKey: string | undefined;
 const recordedDiagnosticKeys = new Set<string>();
 
 export function isAccountPickerPage(root: ParentNode = document): boolean {
-  const text = (root instanceof Document ? root.body?.textContent : root.textContent) || "";
-  return /\bpick an account\b/i.test(text);
+  const headings = [...root.querySelectorAll<HTMLElement>(HEADING_SELECTOR)];
+  if (headings.some((heading) => isVisible(heading) && matchesAnyText(heading.textContent, PICKER_HEADING_PATTERNS))) {
+    return true;
+  }
+
+  const hasAccountTile = findAccountTiles(root).length > 0;
+  if (!hasAccountTile) {
+    return false;
+  }
+  return [...root.querySelectorAll<HTMLElement>(CLICKABLE_SELECTOR)].some(
+    (candidate) => isVisible(candidate) && matchesAnyText(candidate.textContent, OTHER_ACCOUNT_PATTERNS)
+  );
 }
 
 export function findAccountTiles(root: ParentNode = document): AccountTile[] {
@@ -49,7 +89,7 @@ export function findAccountTiles(root: ParentNode = document): AccountTile[] {
     }
     seenElements.add(element);
     const text = normalizeWhitespace(element.textContent || "");
-    if (!text || /use another account/i.test(text)) {
+    if (!text || matchesAnyText(text, OTHER_ACCOUNT_PATTERNS)) {
       continue;
     }
     const upn = extractUpn(text);
@@ -65,7 +105,7 @@ export function findAccountTiles(root: ParentNode = document): AccountTile[] {
 export function chooseAccountTile(
   root: ParentNode,
   settings: Pick<UseMyCurrentAccountSettings, "enabled" | "preferredUpn" | "aliases" | "autoPickEnabled"> &
-    Partial<Pick<UseMyCurrentAccountSettings, "appExclusions">>,
+    Partial<Pick<UseMyCurrentAccountSettings, "appApprovals" | "appExclusions" | "requireAppApproval">>,
   inputUrl = typeof location !== "undefined" ? location.href : ""
 ): PickerResult {
   if (!isAccountPickerPage(root)) {
@@ -91,6 +131,16 @@ export function chooseAccountTile(
       message: "Auto-pick skipped because this app is excluded.",
       exclusionId: exclusionMatch.exclusion.id,
       exclusionValue: exclusionMatch.value,
+      pickerTileCount: findAccountTiles(root).length,
+      pickerMatchCount: 0
+    };
+  }
+
+  if (settings.requireAppApproval && !findMatchingAppApproval(appContext, settings.appApprovals || [])) {
+    return {
+      action: "approvalRequired",
+      matchedUpns: [],
+      message: "Auto-pick skipped because this app is waiting for approval.",
       pickerTileCount: findAccountTiles(root).length,
       pickerMatchCount: 0
     };
@@ -124,17 +174,37 @@ export function chooseAccountTile(
     action: "picked",
     matchedUpns,
     tile: matches[0],
-    message: `Selected ${matches[0].upn}.`,
+    message: "Selected the matching account tile.",
     pickerTileCount: tiles.length,
     pickerMatchCount: 1
   };
 }
 
+export function shouldRequestAppApproval(
+  settings: Pick<UseMyCurrentAccountSettings, "enabled" | "preferredUpn"> &
+    Partial<Pick<UseMyCurrentAccountSettings, "appApprovals" | "appExclusions" | "requireAppApproval">>,
+  inputUrl = typeof location !== "undefined" ? location.href : ""
+): boolean {
+  if (!settings.enabled || !settings.preferredUpn || !settings.requireAppApproval) {
+    return false;
+  }
+
+  const appContext = getAppContextFromUrl(inputUrl);
+  if (appContext.flow === "unknown") {
+    return false;
+  }
+  if (findMatchingAppExclusion(appContext, settings.appExclusions || [])) {
+    return false;
+  }
+  return !findMatchingAppApproval(appContext, settings.appApprovals || []);
+}
+
 export async function runAccountPicker(root: ParentNode = document): Promise<PickerResult> {
   const settings = await getSettings();
-  await recordUrlPreparedDiagnostic(settings);
-  const result = chooseAccountTile(root, settings);
-  await recordPickerDiagnostic(result, settings);
+  const appContextUrl = resolveAppContextUrl(location.href);
+  await recordApprovalRequiredDiagnostic(root, settings, appContextUrl);
+  const result = chooseAccountTile(root, settings, appContextUrl);
+  await recordPickerDiagnostic(result, appContextUrl);
 
   if (result.action !== "picked" || !result.tile) {
     return result;
@@ -145,8 +215,61 @@ export async function runAccountPicker(root: ParentNode = document): Promise<Pic
     return result;
   }
   lastClickKey = clickKey;
+  clearRememberedAppContext();
   result.tile.element.click();
   return result;
+}
+
+export function resolveAppContextUrl(
+  inputUrl: string,
+  storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> | undefined = getSessionStorage(),
+  now = Date.now()
+): string {
+  const currentContext = getAppContextFromUrl(inputUrl);
+  if (currentContext.flow !== "unknown") {
+    if (currentContext.clientId || currentContext.redirectHost) {
+      const safeContextUrl = buildSafeAppContextUrl(inputUrl);
+      if (safeContextUrl && storage) {
+        try {
+          storage.setItem(APP_CONTEXT_SESSION_KEY, JSON.stringify({ url: safeContextUrl, recordedAt: now }));
+        } catch {
+          // Session storage can be unavailable in restricted browser contexts.
+        }
+      }
+      return inputUrl;
+    }
+    removeRememberedAppContext(storage);
+    return inputUrl;
+  }
+
+  if (!storage) {
+    return inputUrl;
+  }
+  try {
+    const stored = JSON.parse(storage.getItem(APP_CONTEXT_SESSION_KEY) || "null") as {
+      url?: unknown;
+      recordedAt?: unknown;
+    } | null;
+    if (
+      !stored ||
+      typeof stored.url !== "string" ||
+      typeof stored.recordedAt !== "number" ||
+      now - stored.recordedAt > APP_CONTEXT_MAX_AGE_MS ||
+      now < stored.recordedAt
+    ) {
+      removeRememberedAppContext(storage);
+      return inputUrl;
+    }
+    const rememberedContext = getAppContextFromUrl(stored.url);
+    if (rememberedContext.flow === "unknown" || (!rememberedContext.clientId && !rememberedContext.redirectHost)) {
+      removeRememberedAppContext(storage);
+      return inputUrl;
+    }
+    return stored.url;
+  } catch {
+    removeRememberedAppContext(storage);
+    return inputUrl;
+  }
 }
 
 async function getSettings(): Promise<UseMyCurrentAccountSettings> {
@@ -157,13 +280,12 @@ async function getSettings(): Promise<UseMyCurrentAccountSettings> {
   return response.data;
 }
 
-async function recordPickerDiagnostic(result: PickerResult, settings: UseMyCurrentAccountSettings): Promise<void> {
+async function recordPickerDiagnostic(result: PickerResult, appContextUrl: string): Promise<void> {
   const kind = getDiagnosticKind(result.action);
   if (!kind) {
     return;
   }
-  await sendDiagnostic(kind, result.message, settings, {
-    matchedUpn: result.matchedUpns[0],
+  await sendDiagnostic(kind, result.message, appContextUrl, {
     exclusionId: result.exclusionId,
     exclusionValue: result.exclusionValue,
     pickerTileCount: result.pickerTileCount,
@@ -171,39 +293,27 @@ async function recordPickerDiagnostic(result: PickerResult, settings: UseMyCurre
   });
 }
 
-async function recordUrlPreparedDiagnostic(settings: UseMyCurrentAccountSettings): Promise<void> {
-  if (!settings.enabled || !settings.rewriteEnabled || !settings.preferredUpn) {
+async function recordApprovalRequiredDiagnostic(
+  root: ParentNode,
+  settings: UseMyCurrentAccountSettings,
+  appContextUrl: string
+): Promise<void> {
+  if (isAccountPickerPage(root) || !shouldRequestAppApproval(settings, appContextUrl)) {
     return;
   }
-  const url = parseCurrentUrl();
-  if (!url || url.hostname.toLowerCase() !== "login.microsoftonline.com") {
-    return;
-  }
-  const domain = getPreferredDomain(settings.preferredUpn);
-  const path = url.pathname.toLowerCase();
-  const hasAuthorizeHint =
-    /\/oauth2(?:\/v2\.0)?\/authorize$/.test(path) &&
-    (url.searchParams.get("login_hint") === settings.preferredUpn || url.searchParams.get("domain_hint") === domain);
-  const hasFederationHint =
-    (path.endsWith("/saml2") || path.endsWith("/wsfed")) &&
-    Boolean(domain && url.searchParams.get("whr") === domain);
-  if (!hasAuthorizeHint && !hasFederationHint) {
-    return;
-  }
-  await sendDiagnostic("urlRewritten", "Microsoft sign-in URL is prepared for the account to auto select.", settings, {
-    ruleId: hasAuthorizeHint ? 1 : 3,
-    changedParams: hasAuthorizeHint
-      ? ["login_hint", ...(url.searchParams.get("domain_hint") === domain ? ["domain_hint"] : [])]
-      : ["whr"]
-  });
+
+  await sendDiagnostic(
+    "approvalRequired",
+    "App automation is waiting for approval for this Microsoft sign-in request.",
+    appContextUrl
+  );
 }
 
 async function sendDiagnostic(
   kind: DiagnosticKind,
   message: string,
-  settings: UseMyCurrentAccountSettings,
+  appContextUrl: string,
   input: {
-    matchedUpn?: string;
     ruleId?: number;
     changedParams?: string[];
     exclusionId?: string;
@@ -212,15 +322,12 @@ async function sendDiagnostic(
     pickerMatchCount?: number;
   } = {}
 ): Promise<void> {
-  const appContext = getAppContextFromUrl(location.href);
+  const appContext = getAppContextFromUrl(appContextUrl);
   const diagnostic = {
     kind,
     occurredAt: new Date().toISOString(),
     message,
-    url: appContext.sanitizedUrl,
     sanitizedUrl: appContext.sanitizedUrl,
-    preferredUpn: settings.preferredUpn,
-    matchedUpn: input.matchedUpn,
     flow: appContext.flow,
     tenant: appContext.tenant,
     clientId: appContext.clientId,
@@ -233,7 +340,7 @@ async function sendDiagnostic(
     pickerTileCount: input.pickerTileCount,
     pickerMatchCount: input.pickerMatchCount
   };
-  const diagnosticKey = `${kind}|${diagnostic.url}|${diagnostic.preferredUpn || ""}|${diagnostic.matchedUpn || ""}|${diagnostic.exclusionValue || ""}`;
+  const diagnosticKey = `${kind}|${diagnostic.sanitizedUrl || ""}|${diagnostic.exclusionValue || ""}|${diagnostic.pickerTileCount ?? ""}|${diagnostic.pickerMatchCount ?? ""}`;
   if (recordedDiagnosticKeys.has(diagnosticKey)) {
     return;
   }
@@ -248,6 +355,7 @@ function getDiagnosticKind(action: PickerResult["action"]): DiagnosticKind | und
   if (action === "disabled") return "disabled";
   if (action === "missingPreferredAccount") return "missingPreferredAccount";
   if (action === "excludedApp") return "excludedApp";
+  if (action === "approvalRequired") return "approvalRequired";
   return undefined;
 }
 
@@ -283,18 +391,6 @@ function normalizeUpn(value: unknown): string | undefined {
   return value.trim().toLowerCase();
 }
 
-function getPreferredDomain(preferredUpn: string | undefined): string | undefined {
-  return preferredUpn?.split("@").at(1)?.trim().toLowerCase() || undefined;
-}
-
-function parseCurrentUrl(): URL | undefined {
-  try {
-    return new URL(location.href);
-  } catch {
-    return undefined;
-  }
-}
-
 function dedupeTiles(tiles: AccountTile[]): AccountTile[] {
   const result: AccountTile[] = [];
   for (const tile of tiles) {
@@ -317,6 +413,58 @@ function isVisible(element: HTMLElement): boolean {
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function matchesAnyText(value: string | null | undefined, patterns: RegExp[]): boolean {
+  const text = normalizeWhitespace(value || "");
+  return Boolean(text && patterns.some((pattern) => pattern.test(text)));
+}
+
+function buildSafeAppContextUrl(inputUrl: string): string | undefined {
+  const context = getAppContextFromUrl(inputUrl);
+  if (context.flow === "unknown" || (!context.clientId && !context.redirectHost)) {
+    return undefined;
+  }
+  let source: URL;
+  try {
+    source = new URL(inputUrl);
+  } catch {
+    return undefined;
+  }
+  if (source.hostname.toLowerCase() !== "login.microsoftonline.com") {
+    return undefined;
+  }
+
+  const safe = new URL(`${source.origin}${source.pathname}`);
+  if (context.clientId) {
+    safe.searchParams.set("client_id", context.clientId);
+  }
+  if (context.redirectHost) {
+    safe.searchParams.set("redirect_uri", `https://${context.redirectHost}${context.redirectPath || ""}`);
+  }
+  return safe.toString();
+}
+
+function clearRememberedAppContext(): void {
+  removeRememberedAppContext(getSessionStorage());
+}
+
+function removeRememberedAppContext(
+  storage: Pick<Storage, "removeItem"> | undefined
+): void {
+  try {
+    storage?.removeItem(APP_CONTEXT_SESSION_KEY);
+  } catch {
+    // Session storage can be unavailable in restricted browser contexts.
+  }
+}
+
+function getSessionStorage(): Storage | undefined {
+  try {
+    return typeof window !== "undefined" ? window.sessionStorage : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function start(): void {

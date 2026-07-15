@@ -1,6 +1,6 @@
 import { normalizeUpn, type UseMyCurrentAccountSettings } from "./settings";
 
-export type BadgeReason = "enabled" | "disabled" | "missingAccount";
+export type BadgeReason = "enabled" | "disabled" | "missingAccount" | "noAutomation";
 
 export interface BadgeState {
   text: "ON" | "OFF";
@@ -27,6 +27,16 @@ export function getBadgeState(settings: UseMyCurrentAccountSettings): BadgeState
       color: "#dc2626",
       title: "UseMyCurrentAccount++ is OFF: set an account to auto select",
       reason: "missingAccount",
+      isOperational: false
+    };
+  }
+
+  if (!settings.rewriteEnabled && !settings.autoPickEnabled) {
+    return {
+      text: "OFF",
+      color: "#dc2626",
+      title: "UseMyCurrentAccount++ is OFF: URL rewriting and account auto-pick are disabled",
+      reason: "noAutomation",
       isOperational: false
     };
   }

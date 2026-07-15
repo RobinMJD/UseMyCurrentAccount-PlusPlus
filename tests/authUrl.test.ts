@@ -50,6 +50,20 @@ describe("auth URL rewriting", () => {
       settings
     );
     expect(new URL(login.redirectUrl!).searchParams.get("prompt")).toBe("login");
+
+    const mixed = buildAuthUrlTransform(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?prompt=login%20select_account",
+      settings
+    );
+    expect(new URL(mixed.redirectUrl!).searchParams.get("prompt")).toBe("login select_account");
+    expect(mixed.changedParams).not.toContain("prompt");
+
+    const repeated = buildAuthUrlTransform(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?prompt=select_account&prompt=login",
+      settings
+    );
+    expect(new URL(repeated.redirectUrl!).searchParams.getAll("prompt")).toEqual(["login"]);
+    expect(repeated.changedParams).toContain("prompt");
   });
 
   test("preserves fragments and security-sensitive parameters", () => {
@@ -91,6 +105,45 @@ describe("auth URL rewriting", () => {
     expect(result.shouldRedirect).toBe(false);
     expect(result.skippedReason).toBe("excludedApp");
     expect(result.exclusionMatch?.value).toBe("app-123");
+  });
+
+  test("skips rewrite for unapproved apps in approved-only mode", () => {
+    const result = buildAuthUrlTransform(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=app-123&redirect_uri=https%3A%2F%2Fportal.example.com%2Fcb",
+      {
+        ...settings,
+        requireAppApproval: true,
+        appApprovals: []
+      }
+    );
+
+    expect(result.shouldRedirect).toBe(false);
+    expect(result.skippedReason).toBe("approvalRequired");
+    expect(result.appContext?.clientId).toBe("app-123");
+    expect(result.appContext?.redirectHost).toBe("portal.example.com");
+  });
+
+  test("rewrites approved apps in approved-only mode", () => {
+    const result = buildAuthUrlTransform(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=app-123&redirect_uri=https%3A%2F%2Fportal.example.com%2Fcb",
+      {
+        ...settings,
+        requireAppApproval: true,
+        appApprovals: [
+          {
+            id: "approval-1",
+            enabled: true,
+            matchType: "clientId",
+            value: "app-123",
+            createdAt: "2026-06-16T10:00:00.000Z"
+          }
+        ]
+      }
+    );
+
+    expect(result.shouldRedirect).toBe(true);
+    expect(result.approvalMatch?.value).toBe("app-123");
+    expect(new URL(result.redirectUrl!).searchParams.get("login_hint")).toBe(settings.preferredUpn);
   });
 
   test("classifies supported Microsoft login URLs", () => {

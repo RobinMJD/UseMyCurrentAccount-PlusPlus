@@ -10,20 +10,26 @@ export type DiagnosticKind =
   | "pickerSkipped"
   | "rulesUpdated"
   | "identityRefreshed"
-  | "excludedApp";
+  | "excludedApp"
+  | "approvalRequired";
 
-export type AppExclusionMatchType = "clientId" | "redirectHost";
+export type AppMatchType = "clientId" | "redirectHost";
+export type AppExclusionMatchType = AppMatchType;
+export type AppApprovalMatchType = AppMatchType;
 export type AuthFlow = "oauth" | "saml" | "wsfed" | "unknown";
 
-export interface AppExclusion {
+export interface AppRule {
   id: string;
   enabled: boolean;
-  matchType: AppExclusionMatchType;
+  matchType: AppMatchType;
   value: string;
   label?: string;
   createdAt: string;
   sourceDiagnosticId?: string;
 }
+
+export type AppExclusion = AppRule;
+export type AppApproval = AppRule;
 
 export interface DiagnosticEvent {
   id: string;
@@ -50,28 +56,46 @@ export interface DiagnosticEvent {
 export interface UseMyCurrentAccountSettings {
   enabled: boolean;
   preferredUpn?: string;
-  detectedProfileEmail?: string;
   aliases: string[];
   rewriteEnabled: boolean;
   autoPickEnabled: boolean;
   suppressSelectAccountPrompt: boolean;
+  requireAppApproval: boolean;
+  appApprovals: AppApproval[];
   appExclusions: AppExclusion[];
   diagnostics: DiagnosticEvent[];
 }
 
+export type UserEditableSettings = Pick<
+  UseMyCurrentAccountSettings,
+  | "enabled"
+  | "preferredUpn"
+  | "aliases"
+  | "rewriteEnabled"
+  | "autoPickEnabled"
+  | "suppressSelectAccountPrompt"
+  | "requireAppApproval"
+  | "appApprovals"
+  | "appExclusions"
+>;
+
+export type UseMyCurrentAccountSettingsPatch = Partial<UserEditableSettings>;
+
 export const DEFAULT_SETTINGS: UseMyCurrentAccountSettings = {
   enabled: true,
   preferredUpn: undefined,
-  detectedProfileEmail: undefined,
   aliases: [],
   rewriteEnabled: true,
   autoPickEnabled: true,
   suppressSelectAccountPrompt: true,
+  requireAppApproval: false,
+  appApprovals: [],
   appExclusions: [],
   diagnostics: []
 };
 
 const MAX_ALIASES = 20;
+const MAX_APP_APPROVALS = 30;
 const MAX_APP_EXCLUSIONS = 30;
 const MAX_DIAGNOSTICS = 60;
 const MAX_MESSAGE_LENGTH = 220;
@@ -92,42 +116,132 @@ export function normalizeUpn(value: unknown): string | undefined {
   return value.trim().toLowerCase();
 }
 
-export function mergeSettings(input: Partial<UseMyCurrentAccountSettings> | undefined): UseMyCurrentAccountSettings {
+export function mergeSettings(input: unknown): UseMyCurrentAccountSettings {
   const source = isRecord(input) ? input : {};
   return {
     enabled: source.enabled !== false,
     preferredUpn: normalizeUpn(source.preferredUpn),
-    detectedProfileEmail: normalizeUpn(source.detectedProfileEmail),
     aliases: sanitizeAliases(source.aliases),
     rewriteEnabled: source.rewriteEnabled !== false,
     autoPickEnabled: source.autoPickEnabled !== false,
     suppressSelectAccountPrompt: source.suppressSelectAccountPrompt !== false,
+    requireAppApproval: source.requireAppApproval === true,
+    appApprovals: sanitizeAppApprovals(source.appApprovals),
     appExclusions: sanitizeAppExclusions(source.appExclusions),
     diagnostics: sanitizeDiagnostics(source.diagnostics)
   };
 }
 
-export function applyDetectedProfileEmailPrefill(
+export function sanitizeSettingsPatch(input: unknown): UseMyCurrentAccountSettingsPatch {
+  const source = isRecord(input) ? input : {};
+  const patch: UseMyCurrentAccountSettingsPatch = {};
+
+  copyBooleanSetting(source, patch, "enabled");
+  copyBooleanSetting(source, patch, "rewriteEnabled");
+  copyBooleanSetting(source, patch, "autoPickEnabled");
+  copyBooleanSetting(source, patch, "suppressSelectAccountPrompt");
+  copyBooleanSetting(source, patch, "requireAppApproval");
+
+  if (hasOwn(source, "preferredUpn")) {
+    patch.preferredUpn = normalizeUpn(source.preferredUpn);
+  }
+  if (hasOwn(source, "aliases") && Array.isArray(source.aliases)) {
+    patch.aliases = sanitizeAliases(source.aliases);
+  }
+  if (hasOwn(source, "appApprovals") && Array.isArray(source.appApprovals)) {
+    patch.appApprovals = sanitizeAppApprovals(source.appApprovals);
+  }
+  if (hasOwn(source, "appExclusions") && Array.isArray(source.appExclusions)) {
+    patch.appExclusions = sanitizeAppExclusions(source.appExclusions);
+  }
+
+  return patch;
+}
+
+export function applyProfileEmailPrefill(
   settings: UseMyCurrentAccountSettings,
-  detectedEmail: unknown
+  profileEmail: unknown
 ): UseMyCurrentAccountSettings {
-  const detectedProfileEmail = normalizeUpn(detectedEmail);
+  const preferredUpn = settings.preferredUpn || normalizeUpn(profileEmail);
   return mergeSettings({
     ...settings,
-    detectedProfileEmail,
-    preferredUpn: settings.preferredUpn || detectedProfileEmail
+    preferredUpn
   });
 }
 
 export async function loadSettings(): Promise<UseMyCurrentAccountSettings> {
-  const result = await chrome.storage.local.get(SETTINGS_KEY);
-  return mergeSettings(result[SETTINGS_KEY] as Partial<UseMyCurrentAccountSettings> | undefined);
+  const snapshot = await readSettingsSnapshot();
+  return snapshot.settings;
 }
 
-export async function saveSettings(settings: UseMyCurrentAccountSettings): Promise<UseMyCurrentAccountSettings> {
-  const merged = mergeSettings(settings);
-  await chrome.storage.local.set({ [SETTINGS_KEY]: merged });
-  return merged;
+let settingsMutationQueue: Promise<void> = Promise.resolve();
+
+interface SettingsMutationContext {
+  hasStoredSettingsRecord: boolean;
+}
+
+interface SettingsMutationOptions {
+  writeIfMissing?: boolean;
+}
+
+export function mutateSettings(
+  mutation: (
+    settings: UseMyCurrentAccountSettings,
+    context: SettingsMutationContext
+  ) => UseMyCurrentAccountSettings,
+  options: SettingsMutationOptions = {}
+): Promise<UseMyCurrentAccountSettings> {
+  const pendingMutation = settingsMutationQueue.then(async () => {
+    const snapshot = await readSettingsSnapshot();
+    const current = snapshot.settings;
+    const next = mergeSettings(mutation(current, {
+      hasStoredSettingsRecord: snapshot.hasStoredSettingsRecord
+    }));
+    if (
+      snapshot.needsLegacyMigration ||
+      !areSettingsEqual(current, next) ||
+      (options.writeIfMissing !== false && !snapshot.hasStoredSettingsRecord)
+    ) {
+      await chrome.storage.local.set({ [SETTINGS_KEY]: next });
+    }
+    return next;
+  });
+
+  settingsMutationQueue = pendingMutation.then(
+    () => undefined,
+    () => undefined
+  );
+  return pendingMutation;
+}
+
+export function migrateLegacySettings(): Promise<UseMyCurrentAccountSettings> {
+  return mutateSettings((settings) => settings, { writeIfMissing: false });
+}
+
+export function prefillProfileEmailOnFreshInstall(
+  profileEmail: unknown
+): Promise<UseMyCurrentAccountSettings> {
+  return mutateSettings(
+    (settings, context) => context.hasStoredSettingsRecord
+      ? settings
+      : applyProfileEmailPrefill(settings, profileEmail),
+    { writeIfMissing: false }
+  );
+}
+
+export function updateSettings(
+  patch: UseMyCurrentAccountSettingsPatch
+): Promise<UseMyCurrentAccountSettings> {
+  const sanitizedPatch = sanitizeSettingsPatch(patch);
+  return mutateSettings((current) => ({ ...current, ...sanitizedPatch }));
+}
+
+export function appendDiagnostic(diagnostic: DiagnosticEvent): Promise<UseMyCurrentAccountSettings> {
+  return mutateSettings((current) => addDiagnostic(current, diagnostic));
+}
+
+export function clearStoredDiagnostics(): Promise<UseMyCurrentAccountSettings> {
+  return mutateSettings((current) => ({ ...current, diagnostics: [] }));
 }
 
 export function createDiagnostic(
@@ -154,15 +268,13 @@ export function createDiagnostic(
   now = new Date()
 ): DiagnosticEvent {
   const occurredAt = now.toISOString();
-  const url = sanitizeText(input.url, MAX_URL_LENGTH);
-  const sanitizedUrl = sanitizeText(input.sanitizedUrl, MAX_URL_LENGTH);
+  const sanitizedUrl = sanitizeDiagnosticUrl(input.sanitizedUrl) || sanitizeDiagnosticUrl(input.url);
   const clientId = normalizeAppExclusionValue("clientId", input.clientId);
   const redirectHost = normalizeAppExclusionValue("redirectHost", input.redirectHost);
   const exclusionValue = normalizeAppExclusionValue("clientId", input.exclusionValue) ||
     normalizeAppExclusionValue("redirectHost", input.exclusionValue) ||
     sanitizeText(input.exclusionValue, MAX_SHORT_TEXT_LENGTH);
   const id = sanitizeText(input.id, 120) || createDiagnosticId(kind, occurredAt, [
-    url,
     sanitizedUrl,
     clientId,
     redirectHost,
@@ -174,10 +286,7 @@ export function createDiagnostic(
     kind,
     occurredAt,
     message: sanitizeText(input.message, MAX_MESSAGE_LENGTH) || kind,
-    ...(url ? { url } : {}),
     ...(sanitizedUrl ? { sanitizedUrl } : {}),
-    ...(normalizeUpn(input.preferredUpn) ? { preferredUpn: normalizeUpn(input.preferredUpn) } : {}),
-    ...(normalizeUpn(input.matchedUpn) ? { matchedUpn: normalizeUpn(input.matchedUpn) } : {}),
     ...(isAuthFlow(input.flow) ? { flow: input.flow } : {}),
     ...(sanitizeText(input.tenant, MAX_SHORT_TEXT_LENGTH) ? { tenant: sanitizeText(input.tenant, MAX_SHORT_TEXT_LENGTH) } : {}),
     ...(clientId ? { clientId } : {}),
@@ -223,9 +332,7 @@ export async function recordDiagnostic(
     pickerMatchCount?: number;
   }
 ): Promise<UseMyCurrentAccountSettings> {
-  const settings = await loadSettings();
-  const next = addDiagnostic(settings, createDiagnostic(kind, input));
-  return saveSettings(next);
+  return appendDiagnostic(createDiagnostic(kind, input));
 }
 
 export function normalizeAppExclusionValue(matchType: AppExclusionMatchType, value: unknown): string | undefined {
@@ -260,7 +367,36 @@ export function createAppExclusion(
   const createdAt = typeof input.createdAt === "string"
     ? sanitizeIsoDate(input.createdAt) || "1970-01-01T00:00:00.000Z"
     : new Date().toISOString();
-  const id = createExclusionId(matchType, normalizedValue);
+  const id = createAppRuleId("excl", matchType, normalizedValue);
+  return {
+    id,
+    enabled: input.enabled !== false,
+    matchType,
+    value: normalizedValue,
+    ...(sanitizeText(input.label, 80) ? { label: sanitizeText(input.label, 80) } : {}),
+    createdAt,
+    ...(sanitizeText(input.sourceDiagnosticId, 120) ? { sourceDiagnosticId: sanitizeText(input.sourceDiagnosticId, 120) } : {})
+  };
+}
+
+export function createAppApproval(
+  matchType: AppApprovalMatchType,
+  value: unknown,
+  input: {
+    label?: string;
+    sourceDiagnosticId?: string;
+    enabled?: boolean;
+    createdAt?: string;
+  } = {}
+): AppApproval | undefined {
+  const normalizedValue = normalizeAppExclusionValue(matchType, value);
+  if (!normalizedValue) {
+    return undefined;
+  }
+  const createdAt = typeof input.createdAt === "string"
+    ? sanitizeIsoDate(input.createdAt) || "1970-01-01T00:00:00.000Z"
+    : new Date().toISOString();
+  const id = createAppRuleId("appr", matchType, normalizedValue);
   return {
     id,
     enabled: input.enabled !== false,
@@ -292,32 +428,84 @@ function sanitizeAliases(value: unknown): string[] {
   return result;
 }
 
+function copyBooleanSetting<K extends keyof UseMyCurrentAccountSettingsPatch>(
+  source: Record<string, unknown>,
+  patch: UseMyCurrentAccountSettingsPatch,
+  key: K
+): void {
+  if (hasOwn(source, key) && typeof source[key] === "boolean") {
+    (patch as Record<string, unknown>)[key] = source[key];
+  }
+}
+
+function areSettingsEqual(
+  first: UseMyCurrentAccountSettings,
+  second: UseMyCurrentAccountSettings
+): boolean {
+  return JSON.stringify(first) === JSON.stringify(second);
+}
+
+async function readSettingsSnapshot(): Promise<{
+  settings: UseMyCurrentAccountSettings;
+  hasStoredSettingsRecord: boolean;
+  needsLegacyMigration: boolean;
+}> {
+  const result = await chrome.storage.local.get(SETTINGS_KEY);
+  const hasStoredSettingsRecord = hasOwn(result, SETTINGS_KEY);
+  const stored = result[SETTINGS_KEY];
+  return {
+    settings: mergeSettings(stored),
+    hasStoredSettingsRecord,
+    needsLegacyMigration: isRecord(stored) && hasOwn(stored, "detectedProfileEmail")
+  };
+}
+
+function hasOwn(source: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(source, key);
+}
+
 function sanitizeAppExclusions(value: unknown): AppExclusion[] {
+  return sanitizeAppRules(value, createAppExclusion, MAX_APP_EXCLUSIONS);
+}
+
+function sanitizeAppApprovals(value: unknown): AppApproval[] {
+  return sanitizeAppRules(value, createAppApproval, MAX_APP_APPROVALS);
+}
+
+function sanitizeAppRules<T extends AppRule>(
+  value: unknown,
+  createRule: (
+    matchType: AppMatchType,
+    ruleValue: unknown,
+    input: { label?: string; sourceDiagnosticId?: string; enabled?: boolean; createdAt?: string }
+  ) => T | undefined,
+  maxItems: number
+): T[] {
   if (!Array.isArray(value)) {
     return [];
   }
   const seen = new Set<string>();
-  const result: AppExclusion[] = [];
+  const result: T[] = [];
   for (const item of value) {
     if (!isRecord(item) || !isAppExclusionMatchType(item.matchType)) {
       continue;
     }
-    const exclusion = createAppExclusion(item.matchType, item.value, {
+    const rule = createRule(item.matchType, item.value, {
       label: typeof item.label === "string" ? item.label : undefined,
       sourceDiagnosticId: typeof item.sourceDiagnosticId === "string" ? item.sourceDiagnosticId : undefined,
       enabled: item.enabled !== false,
       createdAt: typeof item.createdAt === "string" ? item.createdAt : "1970-01-01T00:00:00.000Z"
     });
-    if (!exclusion) {
+    if (!rule) {
       continue;
     }
-    const key = `${exclusion.matchType}:${exclusion.value}`;
+    const key = `${rule.matchType}:${rule.value}`;
     if (seen.has(key)) {
       continue;
     }
     seen.add(key);
-    result.push(exclusion);
-    if (result.length >= MAX_APP_EXCLUSIONS) {
+    result.push(rule);
+    if (result.length >= maxItems) {
       break;
     }
   }
@@ -337,16 +525,14 @@ function sanitizeDiagnostics(value: unknown): DiagnosticEvent[] {
     if (!occurredAt || !message) {
       return [];
     }
+    const sanitizedUrl = sanitizeDiagnosticUrl(item.sanitizedUrl) || sanitizeDiagnosticUrl(item.url);
     return [
       {
         id: sanitizeText(item.id, 120) || `${occurredAt}:${item.kind}`,
         kind: item.kind,
         occurredAt,
         message,
-        ...(sanitizeText(item.url, MAX_URL_LENGTH) ? { url: sanitizeText(item.url, MAX_URL_LENGTH) } : {}),
-        ...(sanitizeText(item.sanitizedUrl, MAX_URL_LENGTH) ? { sanitizedUrl: sanitizeText(item.sanitizedUrl, MAX_URL_LENGTH) } : {}),
-        ...(normalizeUpn(item.preferredUpn) ? { preferredUpn: normalizeUpn(item.preferredUpn) } : {}),
-        ...(normalizeUpn(item.matchedUpn) ? { matchedUpn: normalizeUpn(item.matchedUpn) } : {}),
+        ...(sanitizedUrl ? { sanitizedUrl } : {}),
         ...(isAuthFlow(item.flow) ? { flow: item.flow } : {}),
         ...(sanitizeText(item.tenant, MAX_SHORT_TEXT_LENGTH) ? { tenant: sanitizeText(item.tenant, MAX_SHORT_TEXT_LENGTH) } : {}),
         ...(normalizeAppExclusionValue("clientId", item.clientId) ? { clientId: normalizeAppExclusionValue("clientId", item.clientId) } : {}),
@@ -361,6 +547,71 @@ function sanitizeDiagnostics(value: unknown): DiagnosticEvent[] {
       }
     ];
   });
+}
+
+function sanitizeDiagnosticUrl(value: unknown): string | undefined {
+  const text = sanitizeText(value, MAX_URL_LENGTH);
+  if (!text) {
+    return undefined;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return undefined;
+  }
+
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    return undefined;
+  }
+
+  if (url.hostname.toLowerCase() !== "login.microsoftonline.com") {
+    return sanitizeText(`${url.origin}${url.pathname}`, MAX_URL_LENGTH);
+  }
+
+  const display = new URL(`${url.origin}${url.pathname}`);
+  for (const [key, paramValue] of url.searchParams.entries()) {
+    const normalizedKey = key.toLowerCase();
+    if (
+      normalizedKey === "client_id" ||
+      normalizedKey === "domain_hint" ||
+      normalizedKey === "redirect_host" ||
+      normalizedKey === "whr"
+    ) {
+      display.searchParams.set(normalizedKey, sanitizeText(paramValue, MAX_SHORT_TEXT_LENGTH) || "");
+    }
+  }
+
+  const redirectHost = getDiagnosticRedirectHost(url);
+  if (redirectHost) {
+    display.searchParams.set("redirect_host", redirectHost);
+  }
+
+  return sanitizeText(display.toString(), MAX_URL_LENGTH);
+}
+
+function getDiagnosticRedirectHost(url: URL): string | undefined {
+  for (const name of ["redirect_uri", "wreply", "wtrealm", "realm"]) {
+    const value = url.searchParams.get(name);
+    if (!value) {
+      continue;
+    }
+    const parsed = parseUrlLikeDiagnosticValue(value);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function parseUrlLikeDiagnosticValue(value: string): string | undefined {
+  try {
+    return normalizeAppExclusionValue("redirectHost", new URL(value).hostname);
+  } catch {
+    const schemeMatch = value.match(/^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i);
+    return schemeMatch ? normalizeAppExclusionValue("redirectHost", schemeMatch[1]) : undefined;
+  }
 }
 
 function normalizeHost(value: string): string | undefined {
@@ -430,11 +681,12 @@ function isDiagnosticKind(value: unknown): value is DiagnosticKind {
     value === "pickerSkipped" ||
     value === "rulesUpdated" ||
     value === "identityRefreshed" ||
-    value === "excludedApp"
+    value === "excludedApp" ||
+    value === "approvalRequired"
   );
 }
 
-function isAppExclusionMatchType(value: unknown): value is AppExclusionMatchType {
+function isAppExclusionMatchType(value: unknown): value is AppMatchType {
   return value === "clientId" || value === "redirectHost";
 }
 
@@ -442,13 +694,25 @@ function isAuthFlow(value: unknown): value is AuthFlow {
   return value === "oauth" || value === "saml" || value === "wsfed" || value === "unknown";
 }
 
-function createExclusionId(matchType: AppExclusionMatchType, value: string): string {
-  return `excl-${matchType}-${hashString(value)}`;
+function createAppRuleId(prefix: string, matchType: AppMatchType, value: string): string {
+  return `${prefix}-${matchType}-${hashString(value)}`;
 }
 
 function createDiagnosticId(kind: DiagnosticKind, occurredAt: string, values: Array<string | undefined>): string {
-  const stamp = occurredAt.replace(/[-:.TZ]/g, "").slice(0, 14);
-  return `diag-${stamp}-${kind}-${hashString(values.filter(Boolean).join("|"))}`;
+  const stamp = occurredAt.replace(/\D/g, "");
+  return `diag-${stamp}-${kind}-${hashString(values.filter(Boolean).join("|"))}-${createDiagnosticNonce()}`;
+}
+
+function createDiagnosticNonce(): string {
+  try {
+    const uuid = globalThis.crypto?.randomUUID?.();
+    if (uuid) {
+      return uuid.replace(/-/g, "").slice(0, 10);
+    }
+  } catch {
+    // Fall back only in browser contexts where randomUUID is unavailable.
+  }
+  return Math.random().toString(36).slice(2, 12).padEnd(10, "0");
 }
 
 function hashString(value: string): string {

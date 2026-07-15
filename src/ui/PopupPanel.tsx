@@ -4,9 +4,13 @@ import { mergeSettings, normalizeUpn, type UseMyCurrentAccountSettings } from ".
 
 interface PopupPanelProps {
   settings: UseMyCurrentAccountSettings;
-  onSave: (settings: UseMyCurrentAccountSettings) => Promise<void>;
+  onSave: (settings: PopupSettingsPatch) => Promise<void>;
   onOpenSettings: () => void;
 }
+
+export type PopupSettingsPatch = Pick<UseMyCurrentAccountSettings, "enabled"> & {
+  preferredUpn?: string;
+};
 
 export function PopupPanel({ settings, onSave, onOpenSettings }: PopupPanelProps) {
   const [enabled, setEnabled] = useState(settings.enabled);
@@ -14,25 +18,62 @@ export function PopupPanel({ settings, onSave, onOpenSettings }: PopupPanelProps
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [message, setMessage] = useState("");
   const lastSavedSignature = useRef(getPopupSignature(settings));
+  const lastSavedValues = useRef({
+    enabled: settings.enabled,
+    preferredUpn: normalizeUpn(settings.preferredUpn)
+  });
+  const latestSaveAttempt = useRef(0);
+  const onSaveRef = useRef(onSave);
+  const accountEdited = useRef(false);
+
+  onSaveRef.current = onSave;
 
   useEffect(() => {
+    const incomingSignature = getPopupSignature(settings);
+    if (incomingSignature === lastSavedSignature.current) {
+      return;
+    }
     setEnabled(settings.enabled);
     setAccount(settings.preferredUpn || "");
-    lastSavedSignature.current = getPopupSignature(settings);
+    setSaveState("idle");
+    setMessage("");
+    accountEdited.current = false;
+    lastSavedSignature.current = incomingSignature;
+    lastSavedValues.current = {
+      enabled: settings.enabled,
+      preferredUpn: normalizeUpn(settings.preferredUpn)
+    };
   }, [settings]);
 
   const normalizedAccount = normalizeUpn(account);
-  const canSaveAutomatically = !enabled || Boolean(normalizedAccount);
-  const draftSettings = useMemo(() => {
-    if (!canSaveAutomatically) {
-      return undefined;
+  const accountIsEmpty = !account.trim();
+  const saveCandidate = useMemo(() => {
+    if (accountIsEmpty) {
+      if (!accountEdited.current && !lastSavedValues.current.preferredUpn) {
+        return undefined;
+      }
+      return {
+        patch: { enabled: false, preferredUpn: "" },
+        signature: getPopupSignature({ enabled: false, preferredUpn: undefined })
+      };
     }
-    return mergeSettings({
-      ...settings,
-      enabled,
-      preferredUpn: normalizedAccount || settings.preferredUpn
-    });
-  }, [canSaveAutomatically, enabled, normalizedAccount, settings]);
+    if (normalizedAccount) {
+      return {
+        patch: { enabled, preferredUpn: normalizedAccount },
+        signature: getPopupSignature({ enabled, preferredUpn: normalizedAccount })
+      };
+    }
+    if (enabled !== lastSavedValues.current.enabled) {
+      return {
+        patch: { enabled },
+        signature: getPopupSignature({
+          enabled,
+          preferredUpn: lastSavedValues.current.preferredUpn
+        })
+      };
+    }
+    return undefined;
+  }, [accountIsEmpty, enabled, normalizedAccount]);
   const badge = getBadgeState(
     mergeSettings({
       ...settings,
@@ -40,8 +81,12 @@ export function PopupPanel({ settings, onSave, onOpenSettings }: PopupPanelProps
       preferredUpn: normalizedAccount
     })
   );
+  const noAutomationBehaviors = !settings.rewriteEnabled && !settings.autoPickEnabled;
+  const accountInvalid = Boolean(account.trim()) && !normalizedAccount;
   const accountRequired = enabled && !normalizedAccount;
-  const helperText = accountRequired
+  const helperText = accountInvalid
+    ? "Enter a valid account. The invalid value has not been saved."
+    : accountRequired
     ? "Enter a valid account to turn ON. It saves automatically once valid."
     : saveState === "saving"
       ? "Saving changes..."
@@ -49,50 +94,68 @@ export function PopupPanel({ settings, onSave, onOpenSettings }: PopupPanelProps
         ? "Saved automatically."
         : saveState === "error"
           ? message
+          : noAutomationBehaviors
+            ? "Automation is paused. Enable URL rewriting or account auto-pick in Full settings."
           : badge.isOperational
             ? "Ready. Valid changes save automatically."
             : "Automation is paused.";
 
   useEffect(() => {
-    if (!draftSettings) {
+    const attempt = ++latestSaveAttempt.current;
+    if (!saveCandidate) {
       return;
     }
 
-    const signature = getPopupSignature(draftSettings);
+    const { patch, signature } = saveCandidate;
     if (signature === lastSavedSignature.current) {
       return;
     }
 
     setSaveState("saving");
     setMessage("");
-    const timer = window.setTimeout(() => {
-      void onSave(draftSettings)
-        .then(() => {
-          lastSavedSignature.current = signature;
-          setSaveState("saved");
-        })
-        .catch((error: unknown) => {
-          setMessage(error instanceof Error ? error.message : "Could not save settings.");
-          setSaveState("error");
-        });
-    }, 450);
+    void onSaveRef.current(patch)
+      .then(() => {
+        if (attempt !== latestSaveAttempt.current) {
+          return;
+        }
+        lastSavedSignature.current = signature;
+        lastSavedValues.current = {
+          enabled: patch.enabled,
+          preferredUpn: "preferredUpn" in patch
+            ? normalizeUpn(patch.preferredUpn)
+            : lastSavedValues.current.preferredUpn
+        };
+        setSaveState("saved");
+      })
+      .catch((error: unknown) => {
+        if (attempt !== latestSaveAttempt.current) {
+          return;
+        }
+        setMessage(error instanceof Error ? error.message : "Could not save settings.");
+        setSaveState("error");
+      });
+  }, [saveCandidate]);
 
-    return () => window.clearTimeout(timer);
-  }, [draftSettings, onSave]);
-
-  const toggleButtonLabel = badge.isOperational
-    ? "Turn extension off"
-    : accountRequired
-      ? "Account required before turning on"
-      : "Turn extension on";
+  const turnOnBlocked = !enabled && !normalizedAccount;
+  const toggleUnavailable = noAutomationBehaviors || turnOnBlocked;
+  const toggleButtonLabel = noAutomationBehaviors
+    ? "Enable an automation behavior in Full settings"
+    : badge.isOperational || enabled
+      ? "Turn extension off"
+      : turnOnBlocked
+        ? "Enter a valid account before turning on"
+        : "Turn extension on";
 
   function toggleEnabled() {
+    if (noAutomationBehaviors) {
+      return;
+    }
     setSaveState("idle");
     setEnabled((current) => {
-      if (badge.isOperational || current) {
+      if (current) {
         return false;
       }
-      return true;
+      return Boolean(normalizedAccount);
     });
   }
 
@@ -109,6 +172,7 @@ export function PopupPanel({ settings, onSave, onOpenSettings }: PopupPanelProps
           className={`toggle-button header-toggle ${badge.isOperational ? "selected" : ""}`}
           aria-label={toggleButtonLabel}
           aria-pressed={badge.isOperational}
+          disabled={toggleUnavailable}
           onClick={toggleEnabled}
         >
           {badge.text}
@@ -125,9 +189,16 @@ export function PopupPanel({ settings, onSave, onOpenSettings }: PopupPanelProps
             placeholder="name@example.com"
             value={account}
             onChange={(event) => {
+              const nextAccount = event.currentTarget.value;
+              accountEdited.current = true;
               setSaveState("idle");
-              setAccount(event.currentTarget.value);
+              setMessage("");
+              setAccount(nextAccount);
+              if (!nextAccount.trim()) {
+                setEnabled(false);
+              }
             }}
+            aria-invalid={accountInvalid}
           />
         </label>
 
@@ -145,7 +216,7 @@ export function PopupPanel({ settings, onSave, onOpenSettings }: PopupPanelProps
   );
 }
 
-function getPopupSignature(settings: UseMyCurrentAccountSettings): string {
+function getPopupSignature(settings: Pick<UseMyCurrentAccountSettings, "enabled" | "preferredUpn">): string {
   return JSON.stringify({
     enabled: settings.enabled,
     preferredUpn: normalizeUpn(settings.preferredUpn)

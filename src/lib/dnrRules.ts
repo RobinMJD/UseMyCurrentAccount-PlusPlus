@@ -1,21 +1,28 @@
 import { getPreferredDomain } from "./authUrl";
-import { type AppExclusion, type UseMyCurrentAccountSettings } from "./settings";
+import { type AppApproval, type AppExclusion, type AppMatchType, type UseMyCurrentAccountSettings } from "./settings";
 
 const RULE_AUTHORIZE_HINTS = 1;
 const RULE_AUTHORIZE_SELECT_ACCOUNT = 2;
 const RULE_SAML_WSFED_WHR = 3;
 const EXCLUSION_RULE_ID_START = 1000;
-const MAX_EXCLUSION_RULES = 30;
+const APPROVAL_RULE_ID_START = 2000;
+const MAX_EXCLUSION_RULES = 120;
+const MAX_APPROVAL_RULES = 300;
+
+interface ApprovedPromptRule {
+  regexFilter: string;
+  regexSubstitution: string;
+}
 
 export const MANAGED_DYNAMIC_RULE_IDS = [
   RULE_AUTHORIZE_HINTS,
   RULE_AUTHORIZE_SELECT_ACCOUNT,
   RULE_SAML_WSFED_WHR,
-  ...Array.from({ length: MAX_EXCLUSION_RULES }, (_, index) => EXCLUSION_RULE_ID_START + index)
+  ...Array.from({ length: MAX_EXCLUSION_RULES }, (_, index) => EXCLUSION_RULE_ID_START + index),
+  ...Array.from({ length: MAX_APPROVAL_RULES }, (_, index) => APPROVAL_RULE_ID_START + index)
 ];
 
 const MAIN_FRAME = "main_frame" as chrome.declarativeNetRequest.ResourceType;
-const SUB_FRAME = "sub_frame" as chrome.declarativeNetRequest.ResourceType;
 const REDIRECT = "redirect" as chrome.declarativeNetRequest.RuleActionType;
 const ALLOW = "allow" as chrome.declarativeNetRequest.RuleActionType;
 
@@ -27,8 +34,37 @@ export function buildDynamicRules(settings: UseMyCurrentAccountSettings): chrome
     { key: "domain_hint", value: preferredDomain }
   ];
 
-  const rules: chrome.declarativeNetRequest.Rule[] = [
+  return [
     ...buildExclusionAllowRules(settings.appExclusions),
+    ...(settings.requireAppApproval
+      ? buildApprovalRedirectRules(
+          settings.appApprovals,
+          authorizeParamUpdates,
+          preferredDomain,
+          settings.suppressSelectAccountPrompt
+        )
+      : buildBroadRedirectRules(settings, authorizeParamUpdates, preferredDomain))
+  ];
+}
+
+export function buildActiveDynamicRules(
+  settings: UseMyCurrentAccountSettings
+): chrome.declarativeNetRequest.Rule[] {
+  return settings.enabled && settings.rewriteEnabled && Boolean(settings.preferredUpn)
+    ? buildDynamicRules(settings)
+    : [];
+}
+
+export function getDynamicRulesStateKey(settings: UseMyCurrentAccountSettings): string {
+  return JSON.stringify(buildActiveDynamicRules(settings));
+}
+
+function buildBroadRedirectRules(
+  settings: UseMyCurrentAccountSettings,
+  authorizeParamUpdates: chrome.declarativeNetRequest.QueryKeyValue[],
+  preferredDomain: string
+): chrome.declarativeNetRequest.Rule[] {
+  const rules: chrome.declarativeNetRequest.Rule[] = [
     {
       id: RULE_AUTHORIZE_HINTS,
       priority: 1,
@@ -44,7 +80,7 @@ export function buildDynamicRules(settings: UseMyCurrentAccountSettings): chrome
       },
       condition: {
         regexFilter: "^https://login\\.microsoftonline\\.com/[^?#]+/oauth2(/v2\\.0)?/authorize([?#].*)?$",
-        resourceTypes: [MAIN_FRAME, SUB_FRAME]
+        resourceTypes: [MAIN_FRAME]
       }
     },
     {
@@ -62,7 +98,7 @@ export function buildDynamicRules(settings: UseMyCurrentAccountSettings): chrome
       },
       condition: {
         regexFilter: "^https://login\\.microsoftonline\\.com/[^?#]+/(saml2|wsfed)([?#].*)?$",
-        resourceTypes: [MAIN_FRAME, SUB_FRAME]
+        resourceTypes: [MAIN_FRAME]
       }
     }
   ];
@@ -74,17 +110,12 @@ export function buildDynamicRules(settings: UseMyCurrentAccountSettings): chrome
       action: {
         type: REDIRECT,
         redirect: {
-          transform: {
-            queryTransform: {
-              removeParams: ["prompt"],
-              addOrReplaceParams: authorizeParamUpdates
-            }
-          }
+          regexSubstitution: "\\1\\2\\3"
         }
       },
       condition: {
-        regexFilter: "^https://login\\.microsoftonline\\.com/[^?#]+/oauth2(/v2\\.0)?/authorize\\?([^#&]+&)*prompt=select_account(&[^#]*)?(#.*)?$",
-        resourceTypes: [MAIN_FRAME, SUB_FRAME]
+        regexFilter: buildExactSelectAccountRegexFilter(),
+        resourceTypes: [MAIN_FRAME]
       }
     });
   }
@@ -92,40 +123,201 @@ export function buildDynamicRules(settings: UseMyCurrentAccountSettings): chrome
   return rules;
 }
 
-function buildExclusionAllowRules(exclusions: AppExclusion[]): chrome.declarativeNetRequest.Rule[] {
-  return exclusions
-    .filter((exclusion) => exclusion.enabled)
-    .slice(0, MAX_EXCLUSION_RULES)
-    .flatMap((exclusion, index) => {
-      const regexFilter = buildExclusionRegexFilter(exclusion);
-      if (!regexFilter) {
-        return [];
-      }
-      return [
-        {
-          id: EXCLUSION_RULE_ID_START + index,
-          priority: 100,
-          action: { type: ALLOW },
-          condition: {
-            regexFilter,
-            isUrlFilterCaseSensitive: false,
-            resourceTypes: [MAIN_FRAME, SUB_FRAME]
-          }
-        }
-      ];
-    });
-}
+function buildApprovalRedirectRules(
+  approvals: AppApproval[] = [],
+  authorizeParamUpdates: chrome.declarativeNetRequest.QueryKeyValue[],
+  preferredDomain: string,
+  suppressSelectAccountPrompt: boolean
+): chrome.declarativeNetRequest.Rule[] {
+  const rules: chrome.declarativeNetRequest.Rule[] = [];
+  let ruleOffset = 0;
 
-function buildExclusionRegexFilter(exclusion: AppExclusion): string | undefined {
-  if (exclusion.matchType === "clientId") {
-    const value = escapeRegex(encodeURIComponent(exclusion.value));
-    return `^https://login\\.microsoftonline\\.com/[^?#]+/oauth2(/v2\\.0)?/authorize(?:\\?[^#]*)?[?&]client_id=${value}(?:[&#]|$).*`;
+  for (const approval of approvals.filter((item) => item.enabled)) {
+    if (ruleOffset >= MAX_APPROVAL_RULES) {
+      break;
+    }
+    for (const oauthRegexFilter of buildAppMatchRegexFilters(approval, "oauth")) {
+      if (ruleOffset >= MAX_APPROVAL_RULES) {
+        break;
+      }
+      rules.push({
+        id: APPROVAL_RULE_ID_START + ruleOffset,
+        priority: 1,
+        action: {
+          type: REDIRECT,
+          redirect: {
+            transform: {
+              queryTransform: {
+                addOrReplaceParams: authorizeParamUpdates
+              }
+            }
+          }
+        },
+        condition: {
+          regexFilter: oauthRegexFilter,
+          isUrlFilterCaseSensitive: false,
+          resourceTypes: [MAIN_FRAME]
+        }
+      });
+      ruleOffset += 1;
+    }
+
+    const exactPromptRules = suppressSelectAccountPrompt
+      ? buildApprovedExactSelectAccountRegexFilters(approval)
+      : [];
+    for (const exactPromptRule of exactPromptRules) {
+      if (ruleOffset >= MAX_APPROVAL_RULES) {
+        break;
+      }
+      rules.push({
+        id: APPROVAL_RULE_ID_START + ruleOffset,
+        priority: 2,
+        action: {
+          type: REDIRECT,
+          redirect: {
+            regexSubstitution: exactPromptRule.regexSubstitution
+          }
+        },
+        condition: {
+          regexFilter: exactPromptRule.regexFilter,
+          isUrlFilterCaseSensitive: false,
+          requestDomains: ["login.microsoftonline.com"],
+          resourceTypes: [MAIN_FRAME]
+        }
+      });
+      ruleOffset += 1;
+    }
+
+    for (const federationRegexFilter of buildAppMatchRegexFilters(approval, "federation")) {
+      if (ruleOffset >= MAX_APPROVAL_RULES) {
+        break;
+      }
+      rules.push({
+        id: APPROVAL_RULE_ID_START + ruleOffset,
+        priority: 1,
+        action: {
+          type: REDIRECT,
+          redirect: {
+            transform: {
+              queryTransform: {
+                addOrReplaceParams: [{ key: "whr", value: preferredDomain }]
+              }
+            }
+          }
+        },
+        condition: {
+          regexFilter: federationRegexFilter,
+          isUrlFilterCaseSensitive: false,
+          resourceTypes: [MAIN_FRAME]
+        }
+      });
+      ruleOffset += 1;
+    }
   }
 
-  const host = escapeRegex(exclusion.value);
-  const encodedProtocol = "https?(?::|%3a)(?:/|%2f)(?:/|%2f)";
-  const hostBoundary = "(?::\\d+)?(?:[/?#&]|%2f|%3f|%23|$)";
-  return `^https://login\\.microsoftonline\\.com/[^?#]+/(?:oauth2(?:/v2\\.0)?/authorize|saml2|wsfed)(?:\\?[^#]*)?[?&](?:redirect_uri|wreply|wtrealm|realm)=${encodedProtocol}${host}${hostBoundary}.*`;
+  return rules;
+}
+
+function buildExclusionAllowRules(exclusions: AppExclusion[]): chrome.declarativeNetRequest.Rule[] {
+  const rules: chrome.declarativeNetRequest.Rule[] = [];
+  let ruleOffset = 0;
+
+  for (const exclusion of exclusions.filter((item) => item.enabled).slice(0, 30)) {
+    for (const regexFilter of buildAppMatchRegexFilters(exclusion, "any")) {
+      if (ruleOffset >= MAX_EXCLUSION_RULES) {
+        return rules;
+      }
+      rules.push({
+        id: EXCLUSION_RULE_ID_START + ruleOffset,
+        priority: 100,
+        action: { type: ALLOW },
+        condition: {
+          regexFilter,
+          isUrlFilterCaseSensitive: false,
+          resourceTypes: [MAIN_FRAME]
+        }
+      });
+      ruleOffset += 1;
+    }
+  }
+
+  return rules;
+}
+
+function buildAppMatchRegexFilters(
+  rule: { matchType: AppMatchType; value: string },
+  flow: "any" | "oauth" | "federation"
+): string[] {
+  if (rule.matchType === "clientId") {
+    if (flow === "federation") {
+      return [];
+    }
+    const value = escapeRegex(encodeURIComponent(rule.value));
+    return [
+      `^https://login\\.microsoftonline\\.com/[^?#]+/oauth2(?:/v2\\.0)?/authorize\\?(?:[^#&]+&)*client_id=${value}(?:[&#]|$)`
+    ];
+  }
+
+  const host = escapeRegex(rule.value);
+  if (flow === "any") {
+    return [
+      ...buildRedirectHostRegexFilters(host, "oauth"),
+      ...buildRedirectHostRegexFilters(host, "federation")
+    ];
+  }
+  return buildRedirectHostRegexFilters(host, flow);
+}
+
+function buildRedirectHostRegexFilters(
+  escapedHost: string,
+  flow: "oauth" | "federation"
+): string[] {
+  const pathPattern = flow === "oauth" ? "oauth2(?:/v2\\.0)?/authorize" : "(?:saml2|wsfed)";
+  const parameterPattern = flow === "oauth" ? "redirect_uri" : "(?:wreply|wtrealm|realm)";
+  const prefix = `^https://login\\.microsoftonline\\.com/[^?#]+/${pathPattern}\\?(?:[^#&]+&)*${parameterPattern}=`;
+
+  return [
+    `${prefix}https?://${escapedHost}(?::[0-9]+)?(?:[/?#&]|$)`,
+    `${prefix}https?%3a%2f%2f${escapedHost}(?:%3a[0-9]+)?(?:%2f|%3f|%23|[&#]|$)`
+  ];
+}
+
+function buildExactSelectAccountRegexFilter(): string {
+  const authorizeUrl = "https://login\\.microsoftonline\\.com/[^?#]+/oauth2(?:/v2\\.0)?/authorize";
+  return `^(${authorizeUrl}\\?(?:[^#&]+&)*)prompt=select_account(?:&([^#]*))?(#.*)?$`;
+}
+
+function buildApprovedExactSelectAccountRegexFilters(
+  approval: Pick<AppApproval, "matchType" | "value">
+): ApprovedPromptRule[] {
+  return buildAppQueryParamPatterns(approval).flatMap((appParam) => [
+    {
+      regexFilter: `([?&]${appParam}&(?:[^#&]+&)*)prompt=select_account&`,
+      regexSubstitution: "\\1"
+    },
+    {
+      regexFilter: `([?&]${appParam}&(?:[^#&]+&)*)prompt=select_account(#|$)`,
+      regexSubstitution: "\\1\\2"
+    },
+    {
+      regexFilter: `([?&])prompt=select_account&((?:[^#&]+&)*${appParam})([&#]|$)`,
+      regexSubstitution: "\\1\\2\\3"
+    }
+  ]);
+}
+
+function buildAppQueryParamPatterns(
+  rule: Pick<AppApproval, "matchType" | "value">
+): string[] {
+  if (rule.matchType === "clientId") {
+    return [`client_id=${escapeRegex(encodeURIComponent(rule.value))}`];
+  }
+
+  const host = escapeRegex(rule.value);
+  return [
+    `redirect_uri=https?://${host}(?::[0-9]+)?(?:[/?#][^&#]*|)`,
+    `redirect_uri=https?%3a%2f%2f${host}(?:%3a[0-9]+)?(?:%(?:2f|3f|23)[^&#]*|)`
+  ];
 }
 
 function escapeRegex(value: string): string {

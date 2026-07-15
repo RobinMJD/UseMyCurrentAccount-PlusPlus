@@ -1,14 +1,16 @@
 {
   "name": "use-my-current-account-plusplus",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.0.7",
   "scripts": {
+    "check:version": "node scripts/check-version-sync.mjs",
     "type-check": "tsc --noEmit",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && node scripts/build-extension.mjs",
     "test": "vitest run --maxWorkers=1 --no-file-parallelism",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify": "pnpm run check:version && pnpm run type-check && pnpm test && pnpm run build"
   },
   "dependencies": {
     "react": "^19.0.0",

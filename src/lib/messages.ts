@@ -1,15 +1,15 @@
 import {
   createDiagnostic,
-  mergeSettings,
+  sanitizeSettingsPatch,
   type AuthFlow,
   type DiagnosticEvent,
   type DiagnosticKind,
-  type UseMyCurrentAccountSettings
+  type UseMyCurrentAccountSettingsPatch
 } from "./settings";
 
 export type UseMyCurrentAccountMessage =
   | { action: "getSettings" }
-  | { action: "saveSettings"; settings: UseMyCurrentAccountSettings }
+  | { action: "saveSettings"; settings: UseMyCurrentAccountSettingsPatch }
   | { action: "recordPickerResult"; diagnostic: DiagnosticEvent }
   | { action: "clearDiagnostics" };
 
@@ -29,9 +29,12 @@ export function validateUseMyCurrentAccountMessage(message: unknown): UseMyCurre
   }
 
   if (message.action === "saveSettings") {
+    if (!isRecord(message.settings)) {
+      throw new Error("Settings update is malformed.");
+    }
     return {
       action: "saveSettings",
-      settings: mergeSettings(isRecord(message.settings) ? message.settings : undefined)
+      settings: sanitizeSettingsPatch(message.settings)
     };
   }
 
@@ -46,8 +49,6 @@ export function validateUseMyCurrentAccountMessage(message: unknown): UseMyCurre
         message: typeof message.diagnostic.message === "string" ? message.diagnostic.message : String(message.diagnostic.kind),
         url: typeof message.diagnostic.url === "string" ? message.diagnostic.url : undefined,
         sanitizedUrl: typeof message.diagnostic.sanitizedUrl === "string" ? message.diagnostic.sanitizedUrl : undefined,
-        preferredUpn: typeof message.diagnostic.preferredUpn === "string" ? message.diagnostic.preferredUpn : undefined,
-        matchedUpn: typeof message.diagnostic.matchedUpn === "string" ? message.diagnostic.matchedUpn : undefined,
         flow: isAuthFlow(message.diagnostic.flow) ? message.diagnostic.flow : undefined,
         tenant: typeof message.diagnostic.tenant === "string" ? message.diagnostic.tenant : undefined,
         clientId: typeof message.diagnostic.clientId === "string" ? message.diagnostic.clientId : undefined,
@@ -81,7 +82,8 @@ function isDiagnosticKind(value: unknown): value is DiagnosticKind {
     value === "pickerSkipped" ||
     value === "rulesUpdated" ||
     value === "identityRefreshed" ||
-    value === "excludedApp"
+    value === "excludedApp" ||
+    value === "approvalRequired"
   );
 }
 

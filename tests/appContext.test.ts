@@ -1,11 +1,16 @@
 import { describe, expect, test } from "vitest";
-import { findMatchingAppExclusion, getAppContextFromUrl, sanitizeStoredDiagnosticUrl } from "../src/lib/appContext";
-import { createAppExclusion } from "../src/lib/settings";
+import {
+  findMatchingAppApproval,
+  findMatchingAppExclusion,
+  getAppContextFromUrl,
+  sanitizeStoredDiagnosticUrl
+} from "../src/lib/appContext";
+import { createAppApproval, createAppExclusion } from "../src/lib/settings";
 
 describe("app context extraction", () => {
   test("extracts OAuth app identifiers and redacts sensitive parameters", () => {
     const context = getAppContextFromUrl(
-      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=APP-123&redirect_uri=https%3A%2F%2Fportal.example.com%2Fcallback&state=secret&nonce=secret"
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=APP-123&redirect_uri=https%3A%2F%2Fportal.example.com%2Fcallback&login_hint=person%40example.com&state=secret&nonce=secret"
     );
 
     expect(context).toMatchObject({
@@ -17,6 +22,8 @@ describe("app context extraction", () => {
     });
     expect(context.sanitizedUrl).toContain("client_id=APP-123");
     expect(context.sanitizedUrl).toContain("redirect_host=portal.example.com");
+    expect(context.sanitizedUrl).not.toContain("login_hint=");
+    expect(context.sanitizedUrl).not.toContain("person%40example.com");
     expect(context.sanitizedUrl).not.toContain("state=");
     expect(context.sanitizedUrl).not.toContain("nonce=");
   });
@@ -46,12 +53,26 @@ describe("app context extraction", () => {
     expect(findMatchingAppExclusion(context, [{ ...hostExclusion, value: "portal.example.com" }])?.value).toBe("portal.example.com");
   });
 
+  test("matches enabled approvals by client ID and redirect host", () => {
+    const context = getAppContextFromUrl(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=app-123&redirect_uri=https%3A%2F%2Fportal.example.com%2Fcallback"
+    );
+    const clientApproval = createAppApproval("clientId", "APP-123")!;
+    const hostApproval = createAppApproval("redirectHost", "portal.example.com")!;
+
+    expect(findMatchingAppApproval(context, [clientApproval])?.approval.id).toBe(clientApproval.id);
+    expect(findMatchingAppApproval(context, [hostApproval])?.approval.id).toBe(hostApproval.id);
+    expect(findMatchingAppApproval(context, [{ ...hostApproval, enabled: false }])).toBeUndefined();
+  });
+
   test("sanitizes legacy diagnostic URLs for display", () => {
     const sanitized = sanitizeStoredDiagnosticUrl(
-      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=app-123&redirect_uri=https%3A%2F%2Fportal.example.com%2Fcb&claims=secret"
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=app-123&login_hint=user%40example.com&redirect_uri=https%3A%2F%2Fportal.example.com%2Fcb&claims=secret"
     );
     expect(sanitized).toContain("client_id=app-123");
     expect(sanitized).toContain("redirect_host=portal.example.com");
+    expect(sanitized).not.toContain("login_hint=");
+    expect(sanitized).not.toContain("user%40example.com");
     expect(sanitized).not.toContain("claims=");
   });
 });

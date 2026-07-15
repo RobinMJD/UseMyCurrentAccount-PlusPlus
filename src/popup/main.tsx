@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import "../styles.css";
 import { type UseMyCurrentAccountSettings } from "../lib/settings";
 import { sendMessage } from "../ui/runtime";
-import { PopupPanel } from "../ui/PopupPanel";
+import { PopupPanel, type PopupSettingsPatch } from "../ui/PopupPanel";
 
 function PopupApp() {
   const [settings, setSettings] = useState<UseMyCurrentAccountSettings | undefined>();
@@ -33,7 +33,9 @@ function PopupApp() {
   return (
     <PopupPanel
       settings={settings}
-      onSave={async (next) => setSettings(await sendMessage<UseMyCurrentAccountSettings>({ action: "saveSettings", settings: next }))}
+      onSave={async (next: PopupSettingsPatch) => {
+        await sendMessage<UseMyCurrentAccountSettings>({ action: "saveSettings", settings: next });
+      }}
       onOpenSettings={() => chrome.runtime.openOptionsPage()}
     />
   );

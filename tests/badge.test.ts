@@ -34,4 +34,19 @@ describe("badge state", () => {
     });
     expect(badge.title).toMatch(/set an account/i);
   });
+
+  test("shows OFF when both automation mechanics are disabled", () => {
+    const badge = getBadgeState(mergeSettings({
+      enabled: true,
+      preferredUpn: "user@example.com",
+      rewriteEnabled: false,
+      autoPickEnabled: false
+    }));
+    expect(badge).toMatchObject({
+      text: "OFF",
+      reason: "noAutomation",
+      isOperational: false
+    });
+    expect(badge.title).toMatch(/rewriting and account auto-pick are disabled/i);
+  });
 });

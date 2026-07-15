@@ -1,5 +1,6 @@
 import {
   normalizeAppExclusionValue,
+  type AppApproval,
   type AppExclusion,
   type AppExclusionMatchType,
   type AuthFlow
@@ -20,8 +21,14 @@ export interface AppExclusionMatch {
   value: string;
 }
 
+export interface AppApprovalMatch {
+  approval: AppApproval;
+  matchType: AppExclusionMatchType;
+  value: string;
+}
+
 const MICROSOFT_LOGIN_HOST = "login.microsoftonline.com";
-const SAFE_QUERY_PARAMS = new Set(["client_id", "login_hint", "domain_hint", "whr"]);
+const SAFE_QUERY_PARAMS = new Set(["client_id", "domain_hint", "redirect_host", "whr"]);
 const URL_PARAM_NAMES = ["redirect_uri", "wreply", "wtrealm", "realm"];
 
 export function getAppContextFromUrl(inputUrl: string): AppContext {
@@ -66,11 +73,29 @@ export function findMatchingAppExclusion(
   return undefined;
 }
 
+export function findMatchingAppApproval(
+  context: AppContext,
+  approvals: AppApproval[] = []
+): AppApprovalMatch | undefined {
+  for (const approval of approvals) {
+    if (!approval.enabled) {
+      continue;
+    }
+    if (approval.matchType === "clientId" && context.clientId === approval.value) {
+      return { approval, matchType: "clientId", value: approval.value };
+    }
+    if (approval.matchType === "redirectHost" && context.redirectHost === approval.value) {
+      return { approval, matchType: "redirectHost", value: approval.value };
+    }
+  }
+  return undefined;
+}
+
 export function sanitizeStoredDiagnosticUrl(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
   }
-  return getAppContextFromUrl(value).sanitizedUrl || sanitizeText(value, 500);
+  return getAppContextFromUrl(value).sanitizedUrl;
 }
 
 function getFlow(path: string): AuthFlow {
