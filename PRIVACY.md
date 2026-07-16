@@ -1,10 +1,10 @@
 # Privacy Policy
 
-Effective date: July 15, 2026
+Effective date: July 17, 2026
 
 UseMyCurrentAccount++ is a local-first browser extension. It does not sell user data or send settings or diagnostics to the developer. It has no developer-controlled backend, advertising, or analytics.
 
-To provide its user-facing sign-in feature, the browser may send the configured account as `login_hint` and its domain as `domain_hint` or `whr` directly to Microsoft's `login.microsoftonline.com` service over HTTPS. This happens only when URL rewriting is enabled and the user navigates through a supported Microsoft sign-in flow. The developer does not receive or remotely store those values.
+To provide its user-facing sign-in feature, the browser may send the configured account as `login_hint` and its domain as `domain_hint` or `whr` directly to Microsoft's `login.microsoftonline.com` service over HTTPS. This happens only when URL rewriting is enabled, the user navigates through a supported Microsoft sign-in flow, and the application did not already provide its own OAuth/OIDC account or domain hint. The developer does not receive or remotely store those values.
 
 ## Data Stored Locally
 
@@ -31,13 +31,13 @@ Where supported by the browser, the extension may call the Chromium identity API
 
 Stored data is used only to:
 
-- Add Microsoft sign-in hints for the configured account.
+- Add Microsoft sign-in hints for the configured account when the application did not provide its own OAuth/OIDC account or domain hint.
 - Select exactly one matching account tile on Microsoft account-picker pages.
 - Automate only configured app approvals when approved-apps-only mode is enabled.
 - Skip automation for configured app exclusions.
 - Show local status, settings, statistics, and diagnostics.
 
-The configured account and domain are disclosed to Microsoft only as sign-in hints for the flow the user is visiting. Microsoft processes the resulting sign-in request under its own privacy terms. Account-picker page content, approvals, exclusions, and diagnostics are otherwise processed locally and are not sent to Microsoft by the Extension as separate telemetry.
+The configured account and domain are disclosed to Microsoft only as sign-in hints for an eligible flow without an application-provided OAuth/OIDC account or domain hint. Microsoft processes the resulting sign-in request under its own privacy terms. Account-picker page content, approvals, exclusions, and diagnostics are otherwise processed locally and are not sent to Microsoft by the Extension as separate telemetry.
 
 ## Data Sharing
 

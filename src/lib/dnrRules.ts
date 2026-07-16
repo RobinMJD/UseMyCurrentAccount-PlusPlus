@@ -4,6 +4,10 @@ import { type AppApproval, type AppExclusion, type AppMatchType, type UseMyCurre
 const RULE_AUTHORIZE_HINTS = 1;
 const RULE_AUTHORIZE_SELECT_ACCOUNT = 2;
 const RULE_SAML_WSFED_WHR = 3;
+const RULE_APPLICATION_LOGIN_HINT = 4;
+const RULE_APPLICATION_DOMAIN_HINT = 5;
+const RULE_APPLICATION_USERNAME_HINT = 6;
+const RULE_OAUTH_ENCODED_QUERY_KEY_FAIL_CLOSED = 7;
 const EXCLUSION_RULE_ID_START = 1000;
 const APPROVAL_RULE_ID_START = 2000;
 const MAX_EXCLUSION_RULES = 120;
@@ -18,6 +22,10 @@ export const MANAGED_DYNAMIC_RULE_IDS = [
   RULE_AUTHORIZE_HINTS,
   RULE_AUTHORIZE_SELECT_ACCOUNT,
   RULE_SAML_WSFED_WHR,
+  RULE_APPLICATION_LOGIN_HINT,
+  RULE_APPLICATION_DOMAIN_HINT,
+  RULE_APPLICATION_USERNAME_HINT,
+  RULE_OAUTH_ENCODED_QUERY_KEY_FAIL_CLOSED,
   ...Array.from({ length: MAX_EXCLUSION_RULES }, (_, index) => EXCLUSION_RULE_ID_START + index),
   ...Array.from({ length: MAX_APPROVAL_RULES }, (_, index) => APPROVAL_RULE_ID_START + index)
 ];
@@ -35,6 +43,7 @@ export function buildDynamicRules(settings: UseMyCurrentAccountSettings): chrome
   ];
 
   return [
+    ...buildApplicationOAuthHintAllowRules(),
     ...buildExclusionAllowRules(settings.appExclusions),
     ...(settings.requireAppApproval
       ? buildApprovalRedirectRules(
@@ -45,6 +54,53 @@ export function buildDynamicRules(settings: UseMyCurrentAccountSettings): chrome
         )
       : buildBroadRedirectRules(settings, authorizeParamUpdates, preferredDomain))
   ];
+}
+
+function buildApplicationOAuthHintAllowRules(): chrome.declarativeNetRequest.Rule[] {
+  // Chromium matches transform keys as raw bytes, while Microsoft normalizes case and percent encoding.
+  // Literal aliases are guarded directly. Any encoded top-level key fails closed because DNR cannot decode
+  // it precisely within Chrome's compiled-regex limit; preserving the source request is safer than duplication.
+  return [
+    buildApplicationOAuthHintAllowRule(RULE_APPLICATION_LOGIN_HINT, "login_hint"),
+    buildApplicationOAuthHintAllowRule(RULE_APPLICATION_DOMAIN_HINT, "domain_hint"),
+    buildApplicationOAuthHintAllowRule(RULE_APPLICATION_USERNAME_HINT, "username"),
+    buildOAuthEncodedQueryKeyFailClosedAllowRule()
+  ];
+}
+
+function buildApplicationOAuthHintAllowRule(
+  id: number,
+  key: "login_hint" | "domain_hint" | "username"
+): chrome.declarativeNetRequest.Rule {
+  const encodedSpace = "(?:\\+|%20)*";
+
+  return {
+    id,
+    priority: 10,
+    action: { type: ALLOW },
+    condition: {
+      regexFilter:
+        `^https://login\\.microsoftonline\\.com/[^/?#]+/oauth2(?:/v2\\.0)?/authorize\\?` +
+        `(?:[^#&]*&)*${encodedSpace}${key}${encodedSpace}(?:=[^&#]*)?(?:[&#]|$)`,
+      isUrlFilterCaseSensitive: false,
+      resourceTypes: [MAIN_FRAME]
+    }
+  };
+}
+
+function buildOAuthEncodedQueryKeyFailClosedAllowRule(): chrome.declarativeNetRequest.Rule {
+  return {
+    id: RULE_OAUTH_ENCODED_QUERY_KEY_FAIL_CLOSED,
+    priority: 10,
+    action: { type: ALLOW },
+    condition: {
+      regexFilter:
+        "^https://login\\.microsoftonline\\.com/[^/?#]+/oauth2(?:/v2\\.0)?/authorize\\?" +
+        "(?:[^#&]*&)*(?:\\+|%20)*[^=&#]*%[0-9a-f]{2}[^=&#]*(?:=[^&#]*)?(?:[&#]|$)",
+      isUrlFilterCaseSensitive: false,
+      resourceTypes: [MAIN_FRAME]
+    }
+  };
 }
 
 export function buildActiveDynamicRules(

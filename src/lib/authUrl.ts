@@ -17,6 +17,8 @@ export interface AuthUrlTransform {
     | "missingPreferredAccount"
     | "unsupportedUrl"
     | "unchanged"
+    | "existingAppHint"
+    | "encodedQueryKey"
     | "excludedApp"
     | "approvalRequired";
   appContext?: AppContext;
@@ -87,6 +89,17 @@ export function buildAuthUrlTransform(
   }
 
   if (isAuthorizePath(path)) {
+    const existingAppHint = hasApplicationOAuthHint(url);
+    const encodedQueryKey = hasEncodedTopLevelQueryKey(inputUrl);
+    if (existingAppHint || encodedQueryKey) {
+      return {
+        shouldRedirect: false,
+        changedParams: [],
+        skippedReason: existingAppHint ? "existingAppHint" : "encodedQueryKey",
+        appContext,
+        ...(approvalMatch ? { approvalMatch } : {})
+      };
+    }
     setSearchParam(url, "login_hint", settings.preferredUpn, changedParams);
     if (domain) {
       setSearchParam(url, "domain_hint", domain, changedParams);
@@ -113,6 +126,25 @@ export function buildAuthUrlTransform(
     appContext,
     ...(approvalMatch ? { approvalMatch } : {})
   };
+}
+
+function hasApplicationOAuthHint(url: URL): boolean {
+  for (const key of url.searchParams.keys()) {
+    const normalizedKey = key.trim().toLowerCase();
+    if (normalizedKey === "login_hint" || normalizedKey === "domain_hint" || normalizedKey === "username") {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasEncodedTopLevelQueryKey(inputUrl: string): boolean {
+  const queryStart = inputUrl.indexOf("?");
+  if (queryStart < 0) return false;
+  const fragmentStart = inputUrl.indexOf("#", queryStart + 1);
+  const rawQuery = inputUrl.slice(queryStart + 1, fragmentStart < 0 ? undefined : fragmentStart);
+
+  return rawQuery.split("&").some((entry) => /%[0-9a-f]{2}/i.test(entry.split("=", 1)[0] || ""));
 }
 
 function setSearchParam(url: URL, name: string, value: string, changedParams: string[]): void {

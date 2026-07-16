@@ -14,7 +14,7 @@ describe("extension manifest icons", () => {
   test("uses the app icon for extension and toolbar surfaces", () => {
     const manifest = readManifest();
 
-    expect(manifest.version).toBe("1.1.1");
+    expect(manifest.version).toBe("1.1.2");
     expect(manifest.icons).toMatchObject({
       "16": "img/UseMyCurrentAccountPlusPlus-16.png",
       "32": "img/UseMyCurrentAccountPlusPlus-32.png",

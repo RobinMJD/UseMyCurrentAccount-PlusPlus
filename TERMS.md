@@ -1,12 +1,12 @@
 # Terms of Use
 
-Effective date: July 15, 2026
+Effective date: July 17, 2026
 
 These Terms of Use govern the UseMyCurrentAccount++ browser extension (the "Extension"). By installing or using the Extension, you agree to these terms.
 
 ## Purpose
 
-The Extension helps a user-selected Microsoft account participate in sign-in flows in the current browser profile. It may add Microsoft-supported account or domain hints to top-level navigation on `login.microsoftonline.com` and may select one exact matching visible account-picker tile. It does not authenticate the user, bypass Microsoft security controls, or guarantee that a prompt will be skipped.
+The Extension helps a user-selected Microsoft account participate in sign-in flows in the current browser profile. It may add Microsoft-supported account or domain hints to top-level navigation on `login.microsoftonline.com` when the application did not already provide its own OAuth/OIDC account or domain hint, and may select one exact matching visible account-picker tile. It does not authenticate the user, bypass Microsoft security controls, or guarantee that a prompt will be skipped.
 
 ## License
 

@@ -4,11 +4,12 @@ UseMyCurrentAccount++ is a Chromium Manifest V3 extension for Microsoft Edge and
 
 It is a full rewrite inspired by Claire Novotny LLC's original [UseMyCurrentAccount](https://github.com/novotnyllc/UseMyCurrentAccount) extension, with a modern MV3 architecture, editable account targeting, safer diagnostics, and a fail-closed account-picker fallback.
 
-Current version: **v1.1.1**
+Current version: **v1.1.2**
 
 ## What It Does
 
-- Adds `login_hint` and `domain_hint` to Microsoft OAuth/OIDC authorize URLs.
+- Adds `login_hint` and `domain_hint` to Microsoft OAuth/OIDC authorize URLs only when the application did not already provide an account or domain hint.
+- Preserves application-provided `login_hint`, `domain_hint`, or `username` values without rewriting that request, preventing extension-created duplicate hints.
 - Adds `whr` to Microsoft SAML and WS-Fed sign-in URLs.
 - Optionally removes the prompt parameter when it is exactly `prompt=select_account`.
 - Auto-clicks a Microsoft account-picker tile only when exactly one visible tile matches the account to auto select or configured aliases.
@@ -52,9 +53,10 @@ Then load `dist/` from `edge://extensions` or `chrome://extensions`.
 2. Open the popup and configure the account to auto select, for example `admin.user@example.com`.
 3. Visit a Microsoft OAuth authorize flow that normally shows "Pick an account".
 4. Confirm the flow either skips the picker or auto-selects the exact matching account.
-5. Disable the extension from the popup and confirm Microsoft sign-in is no longer modified.
-6. Clear the account to auto select and confirm no automatic click happens.
-7. Enable approved-apps-only mode, visit a new Microsoft auth flow, and confirm diagnostics offer allow actions before that app is automated.
+5. Visit an authorize URL that already contains `login_hint` and confirm the extension leaves the URL and prompt unchanged.
+6. Disable the extension from the popup and confirm Microsoft sign-in is no longer modified.
+7. Clear the account to auto select and confirm no automatic click happens.
+8. Enable approved-apps-only mode, visit a new Microsoft auth flow, and confirm diagnostics offer allow actions before that app is automated.
 
 For a repeatable loaded-extension smoke test and Store-media refresh, build first and run:
 
@@ -77,6 +79,8 @@ Use of the extension is also governed by the [Terms of Use](TERMS.md).
 
 - The extension cannot read the Windows connected-account list directly. Where Chrome or Edge supports it, browser identity is consulted only on initial installation to prefill the normal editable account field. No separate profile-email copy is retained, and clearing the account stays cleared after browser or extension restarts.
 - Approved-apps-only mode controls this extension's URL rewrite and picker-click automation. It cannot clear cookies or block Microsoft from accepting an already-valid browser session.
+- An application-provided OAuth/OIDC `login_hint`, `domain_hint`, or `username` takes precedence. The extension does not override that hint or suppress the application's prompt on the same request.
+- OAuth/OIDC requests with a percent-encoded top-level parameter name are left untouched. Chromium's declarative rule engine cannot safely decode the name before rewriting, so the extension fails closed instead of risking a duplicate Microsoft sign-in hint.
 - If Microsoft changes the account picker markup, the content script fails closed and records a diagnostic instead of clicking.
 - App sign-in policies, MFA, conditional access, consent, and claims challenges can still require interactive Microsoft prompts.
 

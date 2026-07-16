@@ -31,11 +31,13 @@ describe("dynamic DNR rules", () => {
 
     const allowRules = rules.filter((rule) => rule.action.type === "allow");
     const redirectRules = rules.filter((rule) => rule.action.type === "redirect");
-    expect(allowRules).toHaveLength(5);
+    expect(allowRules).toHaveLength(9);
     const highestRedirectPriority = Math.max(...redirectRules.map((item) => item.priority || 0));
     expect(allowRules.every((rule) => (rule.priority || 0) > highestRedirectPriority)).toBe(true);
-    expect(allowRules[0].condition.regexFilter).toContain("client_id=app-123");
-    expect(allowRules.slice(1).every((rule) => rule.condition.regexFilter?.includes("portal\\.example\\.com"))).toBe(true);
+    expect(allowRules.some((rule) => rule.condition.regexFilter?.includes("client_id=app-123"))).toBe(true);
+    expect(allowRules.filter((rule) => rule.id >= 1000).slice(1).every((rule) =>
+      rule.condition.regexFilter?.includes("portal\\.example\\.com")
+    )).toBe(true);
     expect(rules.every((rule) => rule.condition.resourceTypes?.every((type) => type === "main_frame"))).toBe(true);
     expect(redirectRules).toHaveLength(3);
   });
@@ -90,6 +92,52 @@ describe("dynamic DNR rules", () => {
     ))).toBe(true);
   });
 
+  test("lets application-provided account hints bypass every extension URL mutation", () => {
+    const rules = buildDynamicRules(mergeSettings({ preferredUpn: "user@example.com" }));
+    const guards = rules.filter((rule) => rule.id >= 4 && rule.id <= 7);
+
+    expect(guards).toHaveLength(4);
+    expect(guards.every((guard) => guard.condition.isUrlFilterCaseSensitive === false)).toBe(true);
+    expect(guards.every((guard) => (guard.priority || 0) >
+      Math.max(...rules.filter((rule) => rule.action.type === "redirect").map((rule) => rule.priority || 0))
+    )).toBe(true);
+
+    const authorize = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
+    for (const query of [
+      "login_hint=app.user%40example.com",
+      "Login_Hint=app.user%40example.com",
+      "login%5Fhint=app.user%40example.com",
+      "%6Cogin_hint=app.user%40example.com",
+      "%4Cogin_hint=app.user%40example.com",
+      "%6C%6F%67%69%6E%5F%68%69%6E%74=app.user%40example.com",
+      "%20login_hint+=app.user%40example.com",
+      "username=app.user%40example.com",
+      "Domain_Hint=app.example.com"
+    ]) {
+      expect(matchesAnyRule(guards, `${authorize}?client_id=abc&${query}&state=keep`), query).toBe(true);
+    }
+    expect(matchesAnyRule(guards,
+      `${authorize}?client_id=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb%3Flogin_hint%3Dnested%40example.com`
+    )).toBe(false);
+    expect(matchesAnyRule(guards,
+      `${authorize}?client_id=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=normal`
+    )).toBe(false);
+  });
+
+  test("fails closed for unrelated encoded top-level query keys", () => {
+    const rules = buildDynamicRules(mergeSettings({ preferredUpn: "user@example.com" }));
+    const encodedKeyGuard = rules.find((rule) => rule.id === 7);
+    const authorize = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
+
+    expect(encodedKeyGuard).toBeDefined();
+    expect(matchesAnyRule([encodedKeyGuard!],
+      `${authorize}?client_id=abc&response%5Fmode=query&state=normal`
+    )).toBe(true);
+    expect(matchesAnyRule([encodedKeyGuard!],
+      `${authorize}?client_id=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=normal`
+    )).toBe(false);
+  });
+
   test("prompt suppression rule only targets exact select-account prompts", () => {
     const rules = buildDynamicRules(mergeSettings({ preferredUpn: "user@example.com" }));
     const promptRule = rules.find((rule) => rule.id === 2);
@@ -140,6 +188,7 @@ describe("dynamic DNR rules", () => {
     }));
 
     const redirectRules = rules.filter((rule) => rule.action.type === "redirect");
+    expect(rules.filter((rule) => rule.id >= 4 && rule.id <= 7)).toHaveLength(4);
     expect(redirectRules).toHaveLength(14);
     expect(redirectRules.every((rule) => rule.condition.isUrlFilterCaseSensitive === false)).toBe(true);
     expect(redirectRules.map((rule) => rule.condition.regexFilter).join("\n")).toContain("client_id=app-123");
@@ -185,6 +234,10 @@ describe("dynamic DNR rules", () => {
     expect(MANAGED_DYNAMIC_RULE_IDS).toContain(1);
     expect(MANAGED_DYNAMIC_RULE_IDS).toContain(2);
     expect(MANAGED_DYNAMIC_RULE_IDS).toContain(3);
+    expect(MANAGED_DYNAMIC_RULE_IDS).toContain(4);
+    expect(MANAGED_DYNAMIC_RULE_IDS).toContain(5);
+    expect(MANAGED_DYNAMIC_RULE_IDS).toContain(6);
+    expect(MANAGED_DYNAMIC_RULE_IDS).toContain(7);
     expect(MANAGED_DYNAMIC_RULE_IDS).toContain(1000);
     expect(MANAGED_DYNAMIC_RULE_IDS).toContain(1119);
     expect(MANAGED_DYNAMIC_RULE_IDS).toContain(2000);
@@ -217,7 +270,7 @@ describe("dynamic DNR rules", () => {
     }));
     const ids = rules.map((rule) => rule.id);
 
-    expect(rules).toHaveLength(300);
+    expect(rules).toHaveLength(304);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids.every((id) => MANAGED_DYNAMIC_RULE_IDS.includes(id))).toBe(true);
     const lastRule = rules.find((rule) => rule.id === 2299);
@@ -237,7 +290,7 @@ describe("dynamic DNR rules", () => {
         value: "portal.example.com",
         createdAt: "2026-06-16T10:00:00.000Z"
       }]
-    })).filter((rule) => rule.action.type === "allow");
+    })).filter((rule) => rule.id >= 1000 && rule.id < 2000);
 
     expect(rules).toHaveLength(4);
     expect(rules.every((rule) => {
@@ -356,7 +409,7 @@ describe("dynamic DNR rules", () => {
         value: `excluded-${index}.example.com`,
         createdAt: "2026-06-16T10:00:00.000Z"
       }))
-    })).filter((rule) => rule.action.type === "allow");
+    })).filter((rule) => rule.id >= 1000 && rule.id < 2000);
 
     expect(rules).toHaveLength(120);
     const lastRule = rules.find((rule) => rule.id === 1119);

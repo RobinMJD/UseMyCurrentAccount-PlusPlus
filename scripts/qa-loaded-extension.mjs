@@ -158,7 +158,8 @@ const qa = {
   settingsSave: false,
   profileClearPersistence: false,
   oauthTransform: false,
-  duplicateHintsCanonicalized: false,
+  applicationHintsPreserved: false,
+  encodedQueryKeyFailClosed: false,
   unapprovedUntouched: false,
   federationTransform: false,
   duplicateFederationHintCanonicalized: false,
@@ -231,6 +232,18 @@ try {
       excluded: await chrome.declarativeNetRequest.testMatchOutcome({
         url: 'https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=22222222-3333-4444-5555-666666666666&redirect_uri=https%3A%2F%2Flegacy.contoso.com%2Fcallback',
         type: 'main_frame'
+      }),
+      applicationHint: await chrome.declarativeNetRequest.testMatchOutcome({
+        url: 'https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=11111111-2222-3333-4444-555555555555&Login_Hint=app.user%40contoso.com',
+        type: 'main_frame'
+      }),
+      encodedApplicationHint: await chrome.declarativeNetRequest.testMatchOutcome({
+        url: 'https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=11111111-2222-3333-4444-555555555555&login%5Fhint=app.user%40contoso.com',
+        type: 'main_frame'
+      }),
+      unrelatedEncodedKey: await chrome.declarativeNetRequest.testMatchOutcome({
+        url: 'https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=11111111-2222-3333-4444-555555555555&response%5Fmode=query',
+        type: 'main_frame'
       })
     }))()
   `);
@@ -241,6 +254,18 @@ try {
   assert(
     dnrMatchOutcomes.excluded.matchedRules.some((rule) => rule.ruleId >= 1000 && rule.ruleId < 2000),
     "An excluded redirect host did not match an exclusion DNR rule."
+  );
+  assert(
+    dnrMatchOutcomes.applicationHint.matchedRules.some((rule) => rule.ruleId === 4),
+    "A mixed-case application login hint did not match the no-mutation guard."
+  );
+  assert(
+    dnrMatchOutcomes.encodedApplicationHint.matchedRules.some((rule) => rule.ruleId === 7),
+    "An encoded application login hint did not match the no-mutation guard."
+  );
+  assert(
+    dnrMatchOutcomes.unrelatedEncodedKey.matchedRules.some((rule) => rule.ruleId === 7),
+    "An unrelated encoded top-level query key did not trigger the documented fail-closed guard."
   );
   qa.dnrRules = true;
 
@@ -356,22 +381,60 @@ try {
   await waitForDiagnosticKind(cdp, settingsPage.sessionId, "autoPickedAccount");
   qa.pickerExactMatch = true;
 
-  const repeatedHintsResult = await runSimpleMicrosoftFixture(
+  const applicationHintProof = [];
+  for (const [name, hint] of [
+    ["canonical", "login_hint=app.user%40contoso.com"],
+    ["mixed-case", "Login_Hint=app.user%40contoso.com"],
+    ["encoded-underscore", "login%5Fhint=app.user%40contoso.com"],
+    ["encoded-letter", "%6Cogin_hint=app.user%40contoso.com"],
+    ["fully-encoded", "%6C%6F%67%69%6E%5F%68%69%6E%74=app.user%40contoso.com"],
+    ["space-padded", "%20login_hint+=app.user%40contoso.com"],
+    ["username-alias", "username=app.user%40contoso.com"],
+    ["domain-only", "Domain_Hint=app.contoso.com"]
+  ]) {
+    const sourceUrl =
+      `https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=11111111-2222-3333-4444-555555555555&redirect_uri=https%3A%2F%2Fportal.azure.com%2Fcallback&${hint}&prompt=select_account&state=qa-app-hint-${name}`;
+    const result = await runSimpleMicrosoftFixture(cdp, pickerPage.sessionId, sourceUrl);
+    const intercepted = new URL(result.interceptedUrl);
+    const normalizedKeys = [...intercepted.searchParams.keys()].map((key) => key.trim().toLowerCase());
+    const sourceHasLoginHint = name !== "domain-only";
+    const effectiveLoginHintCount = normalizedKeys.filter((key) => key === "login_hint" || key === "username").length;
+    const effectiveDomainHintCount = normalizedKeys.filter((key) => key === "domain_hint").length;
+
+    assert(
+      effectiveLoginHintCount === (sourceHasLoginHint ? 1 : 0),
+      `The ${name} application hint received an injected login_hint: ${result.interceptedUrl}`
+    );
+    assert(
+      effectiveDomainHintCount === (sourceHasLoginHint ? 0 : 1),
+      `The ${name} application hint received an injected domain_hint: ${result.interceptedUrl}`
+    );
+    assert(intercepted.searchParams.get("prompt") === "select_account", `The ${name} application hint had its prompt changed.`);
+    assert(intercepted.searchParams.get("state") === `qa-app-hint-${name}`, `The ${name} application hint lost its OAuth state.`);
+    applicationHintProof.push(result.interceptedUrl);
+  }
+
+  const nestedHintResult = await runSimpleMicrosoftFixture(
     cdp,
     pickerPage.sessionId,
-    "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=11111111-2222-3333-4444-555555555555&redirect_uri=https%3A%2F%2Fportal.azure.com%2Fcallback&login_hint=admin%40contoso.com&login_hint=other%40contoso.com&domain_hint=contoso.com&domain_hint=other.contoso.com&state=qa-duplicate-hints"
+    "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=11111111-2222-3333-4444-555555555555&redirect_uri=https%3A%2F%2Fportal.azure.com%2Fcallback%3Flogin_hint%3Dnested%40contoso.com&state=qa-nested-hint"
   );
-  const repeatedHintsUrl = new URL(repeatedHintsResult.interceptedUrl);
-  assert(
-    JSON.stringify(repeatedHintsUrl.searchParams.getAll("login_hint")) === JSON.stringify(["admin@contoso.com"]),
-    `The OAuth navigation retained repeated login_hint values: ${repeatedHintsUrl.searchParams.getAll("login_hint").join(", ")}`
+  const nestedHintUrl = new URL(nestedHintResult.interceptedUrl);
+  assert(nestedHintUrl.searchParams.get("login_hint") === "admin@contoso.com", "A nested redirect hint prevented top-level login_hint injection.");
+  assert(nestedHintUrl.searchParams.get("domain_hint") === "contoso.com", "A nested redirect hint prevented top-level domain_hint injection.");
+  qa.applicationHintsPreserved = true;
+
+  const encodedQueryKeyResult = await runSimpleMicrosoftFixture(
+    cdp,
+    pickerPage.sessionId,
+    "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=11111111-2222-3333-4444-555555555555&redirect_uri=https%3A%2F%2Fportal.azure.com%2Fcallback&response%5Fmode=query&prompt=select_account&state=qa-encoded-query-key"
   );
-  assert(
-    JSON.stringify(repeatedHintsUrl.searchParams.getAll("domain_hint")) === JSON.stringify(["contoso.com"]),
-    `The OAuth navigation retained repeated domain_hint values: ${repeatedHintsUrl.searchParams.getAll("domain_hint").join(", ")}`
-  );
-  assert(repeatedHintsUrl.searchParams.get("state") === "qa-duplicate-hints", "The duplicate-hint rewrite did not preserve state.");
-  qa.duplicateHintsCanonicalized = true;
+  const encodedQueryKeyUrl = new URL(encodedQueryKeyResult.interceptedUrl);
+  assert(!encodedQueryKeyUrl.searchParams.has("login_hint"), "An encoded top-level query key did not prevent login_hint injection.");
+  assert(!encodedQueryKeyUrl.searchParams.has("domain_hint"), "An encoded top-level query key did not prevent domain_hint injection.");
+  assert(encodedQueryKeyUrl.searchParams.get("prompt") === "select_account", "An encoded top-level query key did not preserve the source prompt.");
+  assert(encodedQueryKeyUrl.searchParams.get("state") === "qa-encoded-query-key", "An encoded top-level query key did not preserve OAuth state.");
+  qa.encodedQueryKeyFailClosed = true;
 
   const noMatchResult = await runPickerFixture(cdp, pickerPage.sessionId, "no-match");
   assert(!noMatchResult.clicked && noMatchResult.clickCount === "0", "A no-match picker fixture clicked a tile instead of failing closed.");
@@ -499,7 +562,9 @@ try {
     badge,
     transformProof: {
       approvedOauthUrl: exactResult.interceptedUrl,
-      repeatedHintsOauthUrl: repeatedHintsResult.interceptedUrl,
+      applicationHintUrls: applicationHintProof,
+      nestedHintOauthUrl: nestedHintResult.interceptedUrl,
+      encodedQueryKeyOauthUrl: encodedQueryKeyResult.interceptedUrl,
       unapprovedOauthUrl: unapprovedResult.interceptedUrl,
       approvedFederationUrl: federationResult.interceptedUrl
     },

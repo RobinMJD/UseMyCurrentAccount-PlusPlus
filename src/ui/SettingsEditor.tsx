@@ -650,10 +650,10 @@ export function SettingsEditor({ settings, onSave, onClearDiagnostics }: Setting
                   <strong className="label-with-help">
                     URL rewrite
                     <HelpButton id="rewrite-help" openHelpId={openHelpId} setOpenHelpId={setOpenHelpId} title="URL rewrite">
-                      Adds or replaces Microsoft sign-in hints before the page loads. This is the cleanest way to skip the picker when the app accepts hints.
+                      Adds Microsoft OAuth/OIDC sign-in hints before the page loads when the application did not provide its own account or domain hint. Application-provided OAuth/OIDC hints and prompts stay unchanged.
                     </HelpButton>
                   </strong>
-                  <small>Add login and domain hints before Microsoft renders the sign-in page.</small>
+                  <small>Add OAuth/OIDC login and domain hints only when the application did not already provide one.</small>
                 </span>
                 <input
                   aria-label="URL rewrite"

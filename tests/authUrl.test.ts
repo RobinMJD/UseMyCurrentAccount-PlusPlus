@@ -21,25 +21,48 @@ describe("auth URL rewriting", () => {
     expect(url.searchParams.get("state")).toBe("keep");
   });
 
-  test("replaces wrong login hint", () => {
-    const result = buildAuthUrlTransform(
-      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?login_hint=wrong@example.com",
-      settings
-    );
-    expect(new URL(result.redirectUrl!).searchParams.get("login_hint")).toBe(settings.preferredUpn);
+  test.each([
+    "login_hint=app.user%40example.com",
+    "Login_Hint=app.user%40example.com",
+    "login%5Fhint=app.user%40example.com",
+    "%6Cogin_hint=app.user%40example.com",
+    "%6C%6F%67%69%6E%5F%68%69%6E%74=app.user%40example.com",
+    "%20login_hint+=app.user%40example.com",
+    "username=app.user%40example.com",
+    "Domain_Hint=app.example.com"
+  ])("preserves an application-provided account hint without rewriting: %s", (hint) => {
+    const inputUrl =
+      `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=abc&${hint}&prompt=select_account&state=keep`;
+    const result = buildAuthUrlTransform(inputUrl, settings);
+
+    expect(result.shouldRedirect).toBe(false);
+    expect(result.redirectUrl).toBeUndefined();
+    expect(result.changedParams).toEqual([]);
+    expect(result.skippedReason).toBe("existingAppHint");
   });
 
-  test("canonicalizes repeated login and domain hints", () => {
+  test("does not confuse a nested redirect hint with a top-level application hint", () => {
     const result = buildAuthUrlTransform(
-      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=abc&login_hint=admin.user%40example.com&login_hint=other%40example.com&domain_hint=example.com&domain_hint=other.example",
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb%3Flogin_hint%3Dnested%40example.com&state=keep",
       settings
     );
 
     expect(result.shouldRedirect).toBe(true);
     const url = new URL(result.redirectUrl!);
-    expect(url.searchParams.getAll("login_hint")).toEqual(["admin.user@example.com"]);
-    expect(url.searchParams.getAll("domain_hint")).toEqual(["example.com"]);
-    expect(url.searchParams.get("client_id")).toBe("abc");
+    expect(url.searchParams.get("login_hint")).toBe(settings.preferredUpn);
+    expect(url.searchParams.get("redirect_uri")).toBe("https://app.example/cb?login_hint=nested@example.com");
+  });
+
+  test("fails closed for an unrelated encoded top-level query key", () => {
+    const result = buildAuthUrlTransform(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=abc&response%5Fmode=query&state=keep",
+      settings
+    );
+
+    expect(result.shouldRedirect).toBe(false);
+    expect(result.redirectUrl).toBeUndefined();
+    expect(result.changedParams).toEqual([]);
+    expect(result.skippedReason).toBe("encodedQueryKey");
   });
 
   test("adds whr for saml and wsfed URLs", () => {
