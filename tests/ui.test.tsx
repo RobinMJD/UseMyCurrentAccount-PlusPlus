@@ -329,7 +329,7 @@ describe("extension UI surfaces", () => {
 
     await act(async () => getTab("Automation").click());
 
-    expect(activePanelText()).toContain("All Microsoft apps except exclusions");
+    expect(activePanelText()).toContain("All apps except exclusions");
     expect(activePanelText()).toContain("Approved apps only");
 
     await act(async () => getRadio("Approved apps only").click());

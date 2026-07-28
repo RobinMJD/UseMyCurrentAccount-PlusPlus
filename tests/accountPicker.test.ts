@@ -42,6 +42,46 @@ describe("account picker", () => {
     expect(result.tile?.upn).toBe("admin.user@example.com");
   });
 
+  test("activates the semantic control inside Microsoft's structural account row", () => {
+    document.body.innerHTML = `
+      <h1>Pick an account</h1>
+      <div class="row" id="target-wrapper">
+        <div class="table" id="target-control" role="button" tabindex="0">
+          <div>Admin User admin.user@example.com Connected to Windows</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="table" id="other-control" role="button" tabindex="0">
+          <div>Standard User standard.user@example.com Connected to Windows</div>
+        </div>
+      </div>
+      <div class="row">
+        <div role="button" tabindex="0">Use another account</div>
+      </div>
+    `;
+
+    const result = chooseAccountTile(document, settings);
+
+    expect(result.action).toBe("picked");
+    expect(result.tile?.element.id).toBe("target-control");
+    expect(result.tile?.element.id).not.toBe("target-wrapper");
+    expect(findAccountTiles(document)).toHaveLength(2);
+  });
+
+  test("does not treat disabled semantic controls as selectable account tiles", () => {
+    document.body.innerHTML = `
+      <h1>Pick an account</h1>
+      <div class="row">
+        <div role="button" tabindex="0" aria-disabled="true">
+          Admin User admin.user@example.com Connected to Windows
+        </div>
+      </div>
+    `;
+
+    expect(findAccountTiles(document)).toHaveLength(0);
+    expect(chooseAccountTile(document, settings).action).toBe("noMatch");
+  });
+
   test("uses aliases", () => {
     document.body.innerHTML = `
       <h1>Pick an account</h1>

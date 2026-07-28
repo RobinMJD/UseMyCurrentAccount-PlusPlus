@@ -156,6 +156,7 @@ const qa = {
   popupAutosave: false,
   settingsRender: false,
   settingsSave: false,
+  automationScopeLabel: false,
   profileClearPersistence: false,
   oauthTransform: false,
   applicationHintsPreserved: false,
@@ -163,7 +164,11 @@ const qa = {
   unapprovedUntouched: false,
   federationTransform: false,
   duplicateFederationHintCanonicalized: false,
+  pickerAllAppsMode: false,
+  pickerAllAppsExclusion: false,
   pickerExactMatch: false,
+  pickerRetry: false,
+  pickerFailureReporting: false,
   pickerNoMatch: false,
   pickerMultipleMatch: false,
   clearDiagnostics: false,
@@ -367,8 +372,56 @@ try {
   await sendRuntimeMessage(cdp, settingsPage.sessionId, { action: "clearDiagnostics" });
 
   const pickerPage = await createPage(cdp, "about:blank", 900, 700, "Microsoft picker fixture", sessionLabels);
+  const allAppsPatch = {
+    ...samplePatch,
+    requireAppApproval: false,
+    appApprovals: []
+  };
+  const allAppsSave = await sendRuntimeMessage(cdp, settingsPage.sessionId, {
+    action: "saveSettings",
+    settings: allAppsPatch
+  });
+  assert(allAppsSave.success === true, "Could not enable All apps except exclusions mode for picker QA.");
+  await reloadPage(cdp, settingsPage.sessionId);
+  await waitFor(cdp, settingsPage.sessionId, "document.querySelector('h1')?.textContent === 'UseMyCurrentAccount++'");
+  await clickByText(cdp, settingsPage.sessionId, "button", "Automation");
+  await waitFor(cdp, settingsPage.sessionId, "document.body.textContent.includes('All apps except exclusions')");
+  const automationScopeText = await evaluate(cdp, settingsPage.sessionId, "document.body.textContent");
+  assert(
+    !automationScopeText.includes("All Microsoft apps except exclusions"),
+    "The obsolete all-apps scope label is still rendered."
+  );
+  qa.automationScopeLabel = true;
+
+  const allAppsResult = await runPickerFixture(cdp, pickerPage.sessionId, "all-apps");
+  assert(allAppsResult.clicked === "target" && allAppsResult.clickCount === "1", "All-apps mode did not activate the unlisted app's matching account.");
+  assert(allAppsResult.pickerExited === true, "All-apps mode left the unlisted app on the Microsoft account picker.");
+  const allAppsOauthUrl = new URL(allAppsResult.interceptedUrl);
+  assert(allAppsOauthUrl.searchParams.get("login_hint") === "admin@contoso.com", "All-apps mode did not add login_hint for an unlisted app.");
+  assert(allAppsOauthUrl.searchParams.get("domain_hint") === "contoso.com", "All-apps mode did not add domain_hint for an unlisted app.");
+  qa.pickerAllAppsMode = true;
+
+  const allAppsExcludedResult = await runPickerFixture(cdp, pickerPage.sessionId, "all-apps-excluded");
+  assert(
+    !allAppsExcludedResult.clicked && allAppsExcludedResult.clickCount === "0",
+    "All-apps mode activated an account for an excluded app."
+  );
+  assert(allAppsExcludedResult.pickerExited === false, "The excluded-app fixture unexpectedly left the Microsoft account picker.");
+  const allAppsExcludedUrl = new URL(allAppsExcludedResult.interceptedUrl);
+  assert(!allAppsExcludedUrl.searchParams.has("login_hint"), "An excluded app received login_hint in all-apps mode.");
+  assert(!allAppsExcludedUrl.searchParams.has("domain_hint"), "An excluded app received domain_hint in all-apps mode.");
+  await waitForDiagnosticKind(cdp, settingsPage.sessionId, "excludedApp");
+  qa.pickerAllAppsExclusion = true;
+
+  await sendRuntimeMessage(cdp, settingsPage.sessionId, { action: "saveSettings", settings: samplePatch });
+  await sendRuntimeMessage(cdp, settingsPage.sessionId, { action: "clearDiagnostics" });
   const exactResult = await runPickerFixture(cdp, pickerPage.sessionId, "exact");
-  assert(exactResult.clicked === "target" && exactResult.clickCount === "1", "The exact matching picker tile was not clicked exactly once.");
+  assert(exactResult.clicked === "target" && exactResult.clickCount === "1", "The nested exact-match account control was not activated exactly once.");
+  assert(exactResult.pickerExited === true, "The exact-match fixture remained on the Microsoft account picker.");
+  assert(
+    new URL(exactResult.url).pathname === "/qa/selection-complete",
+    `The exact-match fixture did not continue sign-in: ${exactResult.url}`
+  );
   const approvedOauthUrl = new URL(exactResult.interceptedUrl);
   assert(approvedOauthUrl.searchParams.get("login_hint") === "admin@contoso.com", "The approved OAuth navigation did not add login_hint.");
   assert(approvedOauthUrl.searchParams.get("domain_hint") === "contoso.com", "The approved OAuth navigation did not add domain_hint.");
@@ -380,6 +433,26 @@ try {
   qa.oauthTransform = true;
   await waitForDiagnosticKind(cdp, settingsPage.sessionId, "autoPickedAccount");
   qa.pickerExactMatch = true;
+
+  const retryResult = await runPickerFixture(cdp, pickerPage.sessionId, "retry");
+  assert(retryResult.clicked === "target" && retryResult.clickCount === "2", "The unresponsive account control was not retried exactly once.");
+  assert(retryResult.pickerExited === true, "The retry fixture remained on the Microsoft account picker.");
+  qa.pickerRetry = true;
+
+  await sendRuntimeMessage(cdp, settingsPage.sessionId, { action: "clearDiagnostics" });
+  const unresponsiveResult = await runPickerFixture(cdp, pickerPage.sessionId, "rerender-url-only");
+  assert(
+    unresponsiveResult.clicked === "target" && unresponsiveResult.clickCount === "3",
+    "A URL-changing, re-rendered account control was not capped at three activation attempts."
+  );
+  assert(unresponsiveResult.pickerExited === false, "A URL-only change incorrectly reported leaving the account picker.");
+  await waitForDiagnosticKind(cdp, settingsPage.sessionId, "pickerSkipped");
+  const failureDiagnostics = await sendRuntimeMessage(cdp, settingsPage.sessionId, { action: "getSettings" });
+  assert(
+    !failureDiagnostics.data?.diagnostics?.some((item) => item.kind === "autoPickedAccount"),
+    "An unresponsive account control was incorrectly recorded as an automatic selection."
+  );
+  qa.pickerFailureReporting = true;
 
   const applicationHintProof = [];
   for (const [name, hint] of [
@@ -874,7 +947,14 @@ function buildSampleSettingsPatch() {
 }
 
 async function runPickerFixture(connection, sessionId, scenario) {
-  const tiles = scenario === "exact"
+  const hasMatchingTiles = [
+    "all-apps",
+    "all-apps-excluded",
+    "exact",
+    "retry",
+    "rerender-url-only"
+  ].includes(scenario);
+  const tiles = hasMatchingTiles
     ? [
         ["target", "Admin account admin@contoso.com"],
         ["other", "Standard account standard@contoso.com"]
@@ -896,19 +976,58 @@ async function runPickerFixture(connection, sessionId, scenario) {
         <link rel="icon" href="data:," />
         <style>
           body { margin: 40px; font: 16px/1.5 system-ui, sans-serif; color: #111827; }
-          button { display: block; width: 440px; min-height: 54px; margin: 12px 0; padding: 12px; text-align: left; }
+          .row { display: block; width: 440px; margin: 12px 0; }
+          .account-tile, button {
+            box-sizing: border-box;
+            display: block;
+            width: 100%;
+            min-height: 54px;
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            background: white;
+            text-align: left;
+          }
         </style>
       </head>
-      <body data-click-count="0">
+      <body>
         <h1>Pick an account</h1>
-        ${tiles.map(([id, label]) => `<button id="${id}" role="button">${label}</button>`).join("\n")}
-        <button id="other-account" role="button">Use another account</button>
+        ${tiles.map(([id, label]) => `
+          <div class="row" id="${id}-wrapper">
+            <div class="table account-tile" id="${id}" role="button" tabindex="0">
+              <div>${label}</div>
+            </div>
+          </div>
+        `).join("\n")}
+        <div class="row">
+          <button id="other-account" type="button">Use another account</button>
+        </div>
         <script>
-          for (const button of document.querySelectorAll('button:not(#other-account)')) {
-            button.addEventListener('click', () => {
-              document.body.dataset.clicked = button.id;
-              document.body.dataset.clickCount = String(Number(document.body.dataset.clickCount || '0') + 1);
+          document.documentElement.dataset.clickCount = '0';
+          const requiredClicks = ${scenario === "retry" ? "2" : scenario === "rerender-url-only" ? "Number.POSITIVE_INFINITY" : "1"};
+          const rerenderUrlOnly = ${scenario === "rerender-url-only" ? "true" : "false"};
+          const attachSelectionHandler = (control) => {
+            control.addEventListener('click', () => {
+              const clickCount = Number(document.documentElement.dataset.clickCount || '0') + 1;
+              document.documentElement.dataset.clicked = control.id;
+              document.documentElement.dataset.clickCount = String(clickCount);
+              if (control.id !== 'target') return;
+              if (rerenderUrlOnly) {
+                const stillPickerUrl = new URL(location.href);
+                stillPickerUrl.searchParams.set('qa_still_picker_attempt', String(clickCount));
+                history.replaceState({}, '', stillPickerUrl);
+                const replacement = control.cloneNode(true);
+                control.replaceWith(replacement);
+                attachSelectionHandler(replacement);
+                return;
+              }
+              if (clickCount < requiredClicks) return;
+              history.pushState({}, '', '/qa/selection-complete?account=admin%40contoso.com');
+              document.body.innerHTML =
+                '<main id="selection-complete"><h1>Sign-in continued</h1><p>admin@contoso.com</p></main>';
             });
+          };
+          for (const control of document.querySelectorAll('.account-tile')) {
+            attachSelectionHandler(control);
           }
         </script>
       </body>
@@ -916,7 +1035,12 @@ async function runPickerFixture(connection, sessionId, scenario) {
   const exactPromptProof = scenario === "exact"
     ? "&prompt=select_account&nonce=qa-nonce&prompt=consent"
     : "";
-  const requestUrl = `https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=11111111-2222-3333-4444-555555555555&redirect_uri=https%3A%2F%2Fportal.azure.com%2Fqa%2F${scenario}${exactPromptProof}`;
+  const clientId = scenario === "all-apps" || scenario === "all-apps-excluded"
+    ? "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    : "11111111-2222-3333-4444-555555555555";
+  const redirectHost = scenario === "all-apps-excluded" ? "legacy.contoso.com" : scenario === "all-apps" ? "unlisted.contoso.com" : "portal.azure.com";
+  const redirectUri = encodeURIComponent(`https://${redirectHost}/qa/${scenario}`);
+  const requestUrl = `https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=${clientId}&redirect_uri=${redirectUri}${exactPromptProof}`;
 
   await connection.send("Fetch.enable", {
     patterns: [{
@@ -943,16 +1067,18 @@ async function runPickerFixture(connection, sessionId, scenario) {
   }, sessionId);
   await navigation;
   await waitFor(connection, sessionId, "document.readyState === 'complete' && document.querySelector('h1')?.textContent === 'Pick an account'");
-  if (scenario === "exact") {
-    await waitFor(connection, sessionId, "document.body.dataset.clicked === 'target'");
+  if (scenario === "all-apps" || scenario === "exact" || scenario === "retry") {
+    await waitFor(connection, sessionId, "document.querySelector('#selection-complete') !== null", 5_000);
   } else {
-    await delay(700);
+    await delay(2_200);
   }
   await connection.send("Fetch.disable", {}, sessionId);
   const pageResult = await evaluate(connection, sessionId, `({
-    clicked: document.body.dataset.clicked || '',
-    clickCount: document.body.dataset.clickCount || '0',
-    url: location.href
+    clicked: document.documentElement.dataset.clicked || '',
+    clickCount: document.documentElement.dataset.clickCount || '0',
+    url: location.href,
+    pickerExited: document.querySelector('#selection-complete') !== null &&
+      document.querySelector('h1')?.textContent !== 'Pick an account'
   })`);
   return {
     ...pageResult,

@@ -48,7 +48,7 @@ const AUTOMATION_SCOPE_OPTIONS: Array<{
   },
   {
     id: "allApps",
-    title: "All Microsoft apps except exclusions",
+    title: "All apps except exclusions",
     description: "Automate Microsoft sign-ins unless an app is blocked.",
     helpTitle: "All apps mode",
     help: "Best for trusted browser profiles. The extension can rewrite and auto-pick for Microsoft sign-ins, but excluded apps are always skipped."
@@ -1118,7 +1118,7 @@ function getAutomationScopeLabel(scope: AutomationScope): string {
       return "Approved apps only";
     case "allApps":
     default:
-      return "All Microsoft apps except exclusions";
+      return "All apps except exclusions";
   }
 }
 
