@@ -114,6 +114,7 @@ Required to modify Microsoft sign-in URLs and examine Microsoft account-picker p
 - Screenshot 2: `docs/images/store-screenshot-02-overview.png` (1280 x 800)
 - Screenshot 3: `docs/images/store-screenshot-03-approved-apps.png` (1280 x 800)
 - Screenshot 4: `docs/images/store-screenshot-04-diagnostics.png` (1280 x 800)
+- Screenshot 5: `docs/images/store-screenshot-05-automation.png` (1280 x 800)
 - Small promotional tile: `docs/images/small-promo-440x280.png` (440 x 280)
 - Large promotional tile: `docs/images/large-promo-1400x560.png` (1400 x 560)
 
@@ -140,7 +141,8 @@ No publisher-provided credentials, paid account, or developer backend is require
 - Screenshot 2: `release/webstore-assets/screenshot-02-overview.png`
 - Screenshot 3: `release/webstore-assets/screenshot-03-approved-apps.png`
 - Screenshot 4: `release/webstore-assets/screenshot-04-diagnostics.png`
+- Screenshot 5: `release/webstore-assets/screenshot-05-automation.png`
 - Small promo tile: `release/webstore-assets/small-promo-440x280.png`
 - Large promo tile: `release/webstore-assets/large-promo-1400x560.png`
 
-Tracked copies of every preferred listing asset live in `docs/images/`; the four screenshots are embedded in the README. All upload assets are flattened RGB PNGs with the dimensions listed above.
+Tracked copies of every preferred listing asset live in `docs/images/`; all five screenshots are embedded in the README. All upload assets are flattened RGB PNGs with the dimensions listed above.

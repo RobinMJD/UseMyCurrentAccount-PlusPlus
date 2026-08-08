@@ -568,6 +568,10 @@ try {
   await waitFor(cdp, settingsPage.sessionId, "document.querySelector('h1')?.textContent === 'UseMyCurrentAccount++'");
   await capturePng(cdp, settingsPage.sessionId, path.join(releaseDir, "screenshot-02-overview.png"));
 
+  await clickByText(cdp, settingsPage.sessionId, "button", "Automation");
+  await waitFor(cdp, settingsPage.sessionId, "document.body.textContent.includes('All apps except exclusions') && document.body.textContent.includes('Approved apps only')");
+  await capturePng(cdp, settingsPage.sessionId, path.join(releaseDir, "screenshot-05-automation.png"));
+
   await clickByText(cdp, settingsPage.sessionId, "button", "App rules");
   await waitFor(cdp, settingsPage.sessionId, "document.body.textContent.includes('Included apps') && document.body.textContent.includes('portal.azure.com')");
   await evaluate(cdp, settingsPage.sessionId, `
@@ -617,7 +621,8 @@ try {
     ["screenshot-01-popup.png", "store-screenshot-01-popup.png"],
     ["screenshot-02-overview.png", "store-screenshot-02-overview.png"],
     ["screenshot-03-approved-apps.png", "store-screenshot-03-approved-apps.png"],
-    ["screenshot-04-diagnostics.png", "store-screenshot-04-diagnostics.png"]
+    ["screenshot-04-diagnostics.png", "store-screenshot-04-diagnostics.png"],
+    ["screenshot-05-automation.png", "store-screenshot-05-automation.png"]
   ]) {
     await copyFile(path.join(releaseDir, releaseName), path.join(docsImagesDir, docsName));
   }
@@ -635,7 +640,8 @@ try {
     path.join(releaseDir, "screenshot-01-popup.png"),
     path.join(releaseDir, "screenshot-02-overview.png"),
     path.join(releaseDir, "screenshot-03-approved-apps.png"),
-    path.join(releaseDir, "screenshot-04-diagnostics.png")
+    path.join(releaseDir, "screenshot-04-diagnostics.png"),
+    path.join(releaseDir, "screenshot-05-automation.png")
   ]);
 
   process.stdout.write(`${JSON.stringify({
