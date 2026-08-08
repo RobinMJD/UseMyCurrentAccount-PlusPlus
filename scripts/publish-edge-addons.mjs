@@ -11,11 +11,15 @@ export function getMissingEdgeAddonsConfig(env = process.env) {
   return REQUIRED_ENV.filter((key) => !String(env[key] || "").trim());
 }
 
+export function normalizeEdgeCredential(value) {
+  return String(value || "").replace(/[\r\n]+/g, "").trim();
+}
+
 export function readEdgeAddonsConfig(env = process.env) {
   return {
-    clientId: String(env.EDGE_ADDONS_CLIENT_ID || "").trim(),
-    apiKey: String(env.EDGE_ADDONS_API_KEY || "").trim(),
-    productId: String(env.EDGE_ADDONS_PRODUCT_ID || "").trim(),
+    clientId: normalizeEdgeCredential(env.EDGE_ADDONS_CLIENT_ID),
+    apiKey: normalizeEdgeCredential(env.EDGE_ADDONS_API_KEY),
+    productId: normalizeEdgeCredential(env.EDGE_ADDONS_PRODUCT_ID),
     zipPath: String(env.EDGE_ADDONS_ZIP || "").trim(),
     certificationNotes: String(env.EDGE_ADDONS_CERTIFICATION_NOTES || DEFAULT_CERTIFICATION_NOTES).trim(),
     pollAttempts: readPositiveInteger(env.EDGE_ADDONS_POLL_ATTEMPTS, 40),

@@ -5,6 +5,8 @@ import {
   extractEdgeOperationId,
   getEdgeOperationStatus,
   getMissingEdgeAddonsConfig,
+  normalizeEdgeCredential,
+  readEdgeAddonsConfig,
   sanitizeEdgeAddonsMessage
 } from "../scripts/publish-edge-addons.mjs";
 
@@ -18,6 +20,18 @@ describe("Microsoft Edge Add-ons publisher", () => {
         EDGE_ADDONS_ZIP: ""
       })
     ).toEqual(["EDGE_ADDONS_API_KEY", "EDGE_ADDONS_ZIP"]);
+  });
+
+  test("normalizes clipboard line breaks in protected credentials", () => {
+    expect(normalizeEdgeCredential("  first\r\nsecond\n  ")).toBe("firstsecond");
+    expect(
+      readEdgeAddonsConfig({
+        EDGE_ADDONS_CLIENT_ID: " client\n-id ",
+        EDGE_ADDONS_API_KEY: " api\r\n-key ",
+        EDGE_ADDONS_PRODUCT_ID: " product\n-id ",
+        EDGE_ADDONS_ZIP: " release/extension.zip "
+      })
+    ).toMatchObject({ clientId: "client-id", apiKey: "api-key", productId: "product-id" });
   });
 
   test("builds encoded v1 package and submission operation endpoints", () => {
