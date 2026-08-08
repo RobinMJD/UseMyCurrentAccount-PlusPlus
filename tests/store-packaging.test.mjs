@@ -11,9 +11,9 @@ import {
 
 describe("shared Chromium Store packaging", () => {
   test("uses one neutral package for Chrome and Edge", () => {
-    const path = getStorePackagePath("1.1.7", "release");
-    const paths = getStorePackagePaths("1.1.7", "release");
-    expect(path).toMatch(/usemycurrentaccount-plusplus-v1\.1\.7-chromium-stores\.zip$/);
+    const path = getStorePackagePath("1.1.8", "release");
+    const paths = getStorePackagePaths("1.1.8", "release");
+    expect(path).toMatch(/usemycurrentaccount-plusplus-v1\.1\.8-chromium-stores\.zip$/);
     expect(paths).toEqual({ shared: path, chrome: path, edge: path });
     expect(STORE_PACKAGE_SUFFIX).toBe("chromium-stores");
   });
@@ -24,21 +24,21 @@ describe("shared Chromium Store packaging", () => {
     const releaseDir = join(root, "release");
     mkdirSync(distDir);
     mkdirSync(releaseDir);
-    writeFileSync(join(distDir, "manifest.json"), JSON.stringify({ manifest_version: 3, version: "1.1.7" }));
+    writeFileSync(join(distDir, "manifest.json"), JSON.stringify({ manifest_version: 3, version: "1.1.8" }));
     writeFileSync(join(distDir, "popup.html"), "<!doctype html>");
     writeFileSync(join(distDir, "LICENSE.txt"), "UseMyCurrentAccount++ contributors");
     writeFileSync(
       join(distDir, "THIRD_PARTY_NOTICES.txt"),
       "Copyright (c) Meta Platforms, Inc. and affiliates."
     );
-    const legacyChrome = join(releaseDir, "usemycurrentaccount-plusplus-v1.1.7-chrome-webstore.zip");
-    const legacyEdge = join(releaseDir, "usemycurrentaccount-plusplus-v1.1.7-edge-addons.zip");
+    const legacyChrome = join(releaseDir, "usemycurrentaccount-plusplus-v1.1.8-chrome-webstore.zip");
+    const legacyEdge = join(releaseDir, "usemycurrentaccount-plusplus-v1.1.8-edge-addons.zip");
     writeFileSync(legacyChrome, "stale");
     writeFileSync(legacyEdge, "stale");
 
     try {
-      const paths = packageStores({ distDir, releaseDir, version: "1.1.7" });
-      expect(readdirSync(releaseDir)).toEqual(["usemycurrentaccount-plusplus-v1.1.7-chromium-stores.zip"]);
+      const paths = packageStores({ distDir, releaseDir, version: "1.1.8" });
+      expect(readdirSync(releaseDir)).toEqual(["usemycurrentaccount-plusplus-v1.1.8-chromium-stores.zip"]);
       expect(existsSync(paths.shared)).toBe(true);
       expect(paths.chrome).toBe(paths.shared);
       expect(paths.edge).toBe(paths.shared);

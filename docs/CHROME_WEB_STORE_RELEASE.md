@@ -2,7 +2,7 @@
 
 The first Chrome Web Store item is created and fully configured in the Developer Dashboard. Later updates are built, verified, released, and submitted by `.github/workflows/release.yml` from a `vX.Y.Z` tag on `main`. Microsoft Edge publication is documented separately in `docs/EDGE_ADDONS_RELEASE.md`.
 
-Current Google Cloud project: `UseMyCurrentAccount PlusPlus` (`umca-plusplus-502523`). Current OAuth web-client name: `UseMyCurrentAccount++ GitHub Release Web`.
+Project-specific Google Cloud, OAuth client, publisher, and Store item identifiers belong only in the ignored local publication runbook. Do not add them to this public document.
 
 ## One-time setup
 

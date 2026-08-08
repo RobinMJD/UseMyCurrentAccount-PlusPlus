@@ -2,13 +2,9 @@
 
 The first Microsoft Edge Add-ons product is created, listed, and submitted in Partner Center. Later updates are built, verified, released, and submitted by `.github/workflows/release.yml` from a `vX.Y.Z` tag on `main`.
 
-The Partner Center publisher account for this project is `rob.cpag@outlook.com`. Do not create or configure the product under an organizational account offered by a cached Microsoft sign-in session.
+Publisher-account, product, client, and Store identifiers belong only in the ignored local publication runbook. Do not add them to this public document or reuse another extension's product identifier.
 
-Current Microsoft Edge Add-ons product:
-
-- Partner Center product UUID / Publish API product ID: `cb878c57-7248-4e6d-ba5f-d0f7f21b3ae7`
-- Store ID: `0RDCK9QTL9HL`
-- Initial manually submitted release: `v1.1.5`
+The initial manually submitted Microsoft Edge Add-ons release was `v1.1.5`.
 
 ## First publication
 
@@ -21,7 +17,7 @@ Current Microsoft Edge Add-ons product:
    - Homepage, support, privacy, and terms URLs exactly as documented.
    - The 300 x 300 icon, four 1280 x 800 screenshots, and both promotional tiles from `docs/images/`.
 5. Complete the privacy, trader-status, and certification declarations truthfully for the publisher account.
-6. Submit the first package for certification and record the product UUID used by the Edge Add-ons API above.
+6. Submit the first package for certification and record the product UUID in the ignored local publication runbook.
 
 No reviewer credentials or developer backend are required. The reviewer can use an email-style test value and their own Microsoft sign-in flow; the extension does not authenticate users or bypass Microsoft security controls.
 
