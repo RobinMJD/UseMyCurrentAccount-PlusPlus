@@ -1,23 +1,21 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const STORE_PACKAGE_SUFFIXES = Object.freeze({
-  chrome: "chrome-webstore",
-  edge: "edge-addons"
-});
+export const STORE_PACKAGE_SUFFIX = "chromium-stores";
+const LEGACY_STORE_PACKAGE_SUFFIXES = Object.freeze(["chrome-webstore", "edge-addons"]);
 
-export function getStorePackagePaths(version, releaseDir = "release") {
+export function getStorePackagePath(version, releaseDir = "release") {
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(String(version || ""))) {
     throw new Error(`Invalid extension version: ${version || "missing"}.`);
   }
-  return Object.fromEntries(
-    Object.entries(STORE_PACKAGE_SUFFIXES).map(([store, suffix]) => [
-      store,
-      resolve(releaseDir, `usemycurrentaccount-plusplus-v${version}-${suffix}.zip`)
-    ])
-  );
+  return resolve(releaseDir, `usemycurrentaccount-plusplus-v${version}-${STORE_PACKAGE_SUFFIX}.zip`);
+}
+
+export function getStorePackagePaths(version, releaseDir = "release") {
+  const shared = getStorePackagePath(version, releaseDir);
+  return Object.freeze({ shared, chrome: shared, edge: shared });
 }
 
 export function verifyStorePackage(zipPath, expectedVersion) {
@@ -63,18 +61,18 @@ export function packageStores({ distDir = "dist", releaseDir = "release", versio
   }
   mkdirSync(releaseDir, { recursive: true });
   const paths = getStorePackagePaths(resolvedVersion, releaseDir);
-  for (const packagePath of Object.values(paths)) rmSync(packagePath, { force: true });
+  const legacyPaths = LEGACY_STORE_PACKAGE_SUFFIXES.map((suffix) =>
+    resolve(releaseDir, `usemycurrentaccount-plusplus-v${resolvedVersion}-${suffix}.zip`)
+  );
+  for (const packagePath of new Set([paths.shared, ...legacyPaths])) rmSync(packagePath, { force: true });
 
-  execFileSync("zip", ["-X", "-q", "-r", paths.chrome, ".", "-x", "*.DS_Store", "*.map"], {
+  execFileSync("zip", ["-X", "-q", "-r", paths.shared, ".", "-x", "*.DS_Store", "*.map"], {
     cwd: distPath,
     stdio: "inherit"
   });
-  copyFileSync(paths.chrome, paths.edge);
 
-  for (const [store, packagePath] of Object.entries(paths)) {
-    verifyStorePackage(packagePath, resolvedVersion);
-    console.log(`Verified ${store} package: ${packagePath}`);
-  }
+  verifyStorePackage(paths.shared, resolvedVersion);
+  console.log(`Verified shared Chromium Store package: ${paths.shared}`);
   return paths;
 }
 

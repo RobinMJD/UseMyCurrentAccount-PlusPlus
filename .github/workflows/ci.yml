@@ -43,14 +43,12 @@ jobs:
       - name: Audit
         run: pnpm audit --audit-level=low
 
-      - name: Package and verify both Store ZIPs
+      - name: Package and verify Chromium Store ZIP
         run: pnpm run package:stores
 
-      - name: Upload Store ZIP artifacts
+      - name: Upload Store ZIP artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: browser-store-zips
-          path: |
-            release/usemycurrentaccount-plusplus-v*-chrome-webstore.zip
-            release/usemycurrentaccount-plusplus-v*-edge-addons.zip
+          name: browser-store-package
+          path: release/usemycurrentaccount-plusplus-v*-chromium-stores.zip
           if-no-files-found: error

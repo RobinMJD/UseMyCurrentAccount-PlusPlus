@@ -14,7 +14,7 @@ Current Microsoft Edge Add-ons product:
 
 1. Run `pnpm run verify`, then `pnpm run package:stores`.
 2. In Partner Center, create a new extension product for UseMyCurrentAccount++.
-3. Upload `release/usemycurrentaccount-plusplus-vX.Y.Z-edge-addons.zip`.
+3. Upload `release/usemycurrentaccount-plusplus-vX.Y.Z-chromium-stores.zip`.
 4. Complete the listing from `docs/STORE_LISTING.md`:
    - English listing, product name `UseMyCurrentAccount++`, category `Productivity`.
    - Public, free, all available markets, no mature content.
@@ -42,10 +42,10 @@ The release workflow also supports a manual retry of an existing tag with target
 ## Release checklist
 
 1. Update every version consumer together.
-2. Run the full verification, loaded-Edge QA, and dual-package checks.
+2. Run the full verification, loaded-Edge QA, and shared-package checks.
 3. Push the verified commit to `main` and wait for CI.
 4. Create and push the matching tag.
-5. Verify both immutable ZIP assets on the GitHub release.
+5. Verify the single immutable Chromium ZIP asset on the GitHub release.
 6. Verify the Chrome Web Store submission and the Edge Partner Center certification state.
 
-The Chrome and Edge ZIPs are separately named copies of the same verified extension payload so the code reviewed in both stores cannot drift.
+The GitHub release contains one neutral Chromium ZIP. Chrome and Edge receive that exact verified asset, so the code reviewed in the two stores cannot drift.

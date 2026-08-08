@@ -94,6 +94,7 @@ describe("release workflow", () => {
     expect(workflow).toContain("CHROME_WEBSTORE_CLIENT_ID");
     expect(workflow).toContain("CHROME_WEBSTORE_REFRESH_TOKEN");
     expect(workflow).toContain("scripts/publish-chrome-webstore.mjs");
+    expect(workflow).toContain("usemycurrentaccount-plusplus-${{ env.RELEASE_TAG }}-chromium-stores.zip");
     expect(workflow).toContain("pnpm test");
     expect(workflow).toContain("pnpm audit --audit-level=low");
     expect(workflow).not.toContain("--clobber");

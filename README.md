@@ -4,7 +4,7 @@ UseMyCurrentAccount++ is a Chromium Manifest V3 extension for Microsoft Edge and
 
 It is a full rewrite inspired by Claire Novotny LLC's original [UseMyCurrentAccount](https://github.com/novotnyllc/UseMyCurrentAccount) extension, with a modern MV3 architecture, editable account targeting, safer diagnostics, and a fail-closed account-picker fallback.
 
-Current version: **v1.1.5**
+Current version: **v1.1.6**
 
 ## What It Does
 
@@ -97,7 +97,7 @@ pnpm run build
 
 ## Releases
 
-Every push and pull request is verified in GitHub Actions and produces separately named, byte-identical Chrome Web Store and Microsoft Edge Add-ons ZIPs from the tested `dist/` output. A `vX.Y.Z` tag on `main` repeats the complete verification, attaches both immutable ZIPs to the GitHub release, and submits them through the Chrome and Edge publication APIs.
+Every push and pull request is verified in GitHub Actions and produces one browser-neutral `usemycurrentaccount-plusplus-vX.Y.Z-chromium-stores.zip` from the tested `dist/` output. A `vX.Y.Z` tag on `main` repeats the complete verification, attaches that immutable ZIP once to the GitHub release, and submits the unchanged package through the Chrome and Edge publication APIs. If either Store later requires different packaged code or metadata, the pipeline must be split and tested explicitly.
 
 The initial Store items, listings, privacy declarations, and distribution settings are configured manually. Subsequent tagged updates use the protected GitHub environments documented in [docs/CHROME_WEB_STORE_RELEASE.md](docs/CHROME_WEB_STORE_RELEASE.md) and [docs/EDGE_ADDONS_RELEASE.md](docs/EDGE_ADDONS_RELEASE.md). The exact browser-neutral listing copy, certification notes, asset inventory, and permission justifications are maintained in [docs/STORE_LISTING.md](docs/STORE_LISTING.md).
 

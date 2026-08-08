@@ -61,6 +61,6 @@ describe("Microsoft Edge Add-ons publisher", () => {
     expect(workflow).toContain("ref: refs/tags/${{ env.RELEASE_TAG }}");
     expect(workflow).toContain('git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"');
     expect(workflow).toContain('git rev-parse "refs/tags/${RELEASE_TAG}^{commit}"');
-    expect(workflow).toContain("usemycurrentaccount-plusplus-${{ env.RELEASE_TAG }}-edge-addons.zip");
+    expect(workflow).toContain("usemycurrentaccount-plusplus-${{ env.RELEASE_TAG }}-chromium-stores.zip");
   });
 });

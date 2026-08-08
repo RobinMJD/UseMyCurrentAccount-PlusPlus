@@ -1,22 +1,62 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { getStorePackagePaths, STORE_PACKAGE_SUFFIXES } from "../scripts/package-stores.mjs";
+import {
+  getStorePackagePath,
+  getStorePackagePaths,
+  packageStores,
+  STORE_PACKAGE_SUFFIX
+} from "../scripts/package-stores.mjs";
 
-describe("dual Store packaging", () => {
-  test("creates distinct Chrome and Edge package names from one version", () => {
-    const paths = getStorePackagePaths("1.1.5", "release");
-    expect(paths.chrome).toMatch(/usemycurrentaccount-plusplus-v1\.1\.5-chrome-webstore\.zip$/);
-    expect(paths.edge).toMatch(/usemycurrentaccount-plusplus-v1\.1\.5-edge-addons\.zip$/);
-    expect(STORE_PACKAGE_SUFFIXES).toEqual({ chrome: "chrome-webstore", edge: "edge-addons" });
+describe("shared Chromium Store packaging", () => {
+  test("uses one neutral package for Chrome and Edge", () => {
+    const path = getStorePackagePath("1.1.6", "release");
+    const paths = getStorePackagePaths("1.1.6", "release");
+    expect(path).toMatch(/usemycurrentaccount-plusplus-v1\.1\.6-chromium-stores\.zip$/);
+    expect(paths).toEqual({ shared: path, chrome: path, edge: path });
+    expect(STORE_PACKAGE_SUFFIX).toBe("chromium-stores");
   });
 
-  test("CI and release workflows retain both verified packages", () => {
+  test("writes one archive and removes same-version legacy duplicates", () => {
+    const root = mkdtempSync(join(tmpdir(), "umca-store-package-"));
+    const distDir = join(root, "dist");
+    const releaseDir = join(root, "release");
+    mkdirSync(distDir);
+    mkdirSync(releaseDir);
+    writeFileSync(join(distDir, "manifest.json"), JSON.stringify({ manifest_version: 3, version: "1.1.6" }));
+    writeFileSync(join(distDir, "popup.html"), "<!doctype html>");
+    writeFileSync(join(distDir, "LICENSE.txt"), "UseMyCurrentAccount++ contributors");
+    writeFileSync(
+      join(distDir, "THIRD_PARTY_NOTICES.txt"),
+      "Copyright (c) Meta Platforms, Inc. and affiliates."
+    );
+    const legacyChrome = join(releaseDir, "usemycurrentaccount-plusplus-v1.1.6-chrome-webstore.zip");
+    const legacyEdge = join(releaseDir, "usemycurrentaccount-plusplus-v1.1.6-edge-addons.zip");
+    writeFileSync(legacyChrome, "stale");
+    writeFileSync(legacyEdge, "stale");
+
+    try {
+      const paths = packageStores({ distDir, releaseDir, version: "1.1.6" });
+      expect(readdirSync(releaseDir)).toEqual(["usemycurrentaccount-plusplus-v1.1.6-chromium-stores.zip"]);
+      expect(existsSync(paths.shared)).toBe(true);
+      expect(paths.chrome).toBe(paths.shared);
+      expect(paths.edge).toBe(paths.shared);
+      expect(existsSync(legacyChrome)).toBe(false);
+      expect(existsSync(legacyEdge)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("CI and release workflows retain one verified package", () => {
     const ci = readFileSync(".github/workflows/ci.yml", "utf8");
     const release = readFileSync(".github/workflows/release.yml", "utf8");
     for (const workflow of [ci, release]) {
       expect(workflow).toContain("pnpm run package:stores");
-      expect(workflow).toContain("usemycurrentaccount-plusplus-v*-chrome-webstore.zip");
-      expect(workflow).toContain("usemycurrentaccount-plusplus-v*-edge-addons.zip");
+      expect(workflow).toContain("usemycurrentaccount-plusplus-v*-chromium-stores.zip");
+      expect(workflow).not.toContain("usemycurrentaccount-plusplus-v*-chrome-webstore.zip");
+      expect(workflow).not.toContain("usemycurrentaccount-plusplus-v*-edge-addons.zip");
     }
   });
 });
