@@ -4,9 +4,9 @@ import { getStorePackagePaths, STORE_PACKAGE_SUFFIXES } from "../scripts/package
 
 describe("dual Store packaging", () => {
   test("creates distinct Chrome and Edge package names from one version", () => {
-    const paths = getStorePackagePaths("1.1.4", "release");
-    expect(paths.chrome).toMatch(/usemycurrentaccount-plusplus-v1\.1\.4-chrome-webstore\.zip$/);
-    expect(paths.edge).toMatch(/usemycurrentaccount-plusplus-v1\.1\.4-edge-addons\.zip$/);
+    const paths = getStorePackagePaths("1.1.5", "release");
+    expect(paths.chrome).toMatch(/usemycurrentaccount-plusplus-v1\.1\.5-chrome-webstore\.zip$/);
+    expect(paths.edge).toMatch(/usemycurrentaccount-plusplus-v1\.1\.5-edge-addons\.zip$/);
     expect(STORE_PACKAGE_SUFFIXES).toEqual({ chrome: "chrome-webstore", edge: "edge-addons" });
   });
 

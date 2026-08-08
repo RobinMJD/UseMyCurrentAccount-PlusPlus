@@ -8,7 +8,7 @@ Current Microsoft Edge Add-ons product:
 
 - Partner Center product UUID / Publish API product ID: `cb878c57-7248-4e6d-ba5f-d0f7f21b3ae7`
 - Store ID: `0RDCK9QTL9HL`
-- Initial manually submitted release: `v1.1.4`
+- Initial manually submitted release: `v1.1.5`
 
 ## First publication
 
@@ -35,7 +35,7 @@ Create a GitHub environment named `microsoft-edge-add-ons` and add these environ
 
 Add the environment variable `EDGE_ADDONS_CERTIFICATION_NOTES` with the reviewer summary from `docs/STORE_LISTING.md`. Never commit API credentials or print them in release logs.
 
-Before tagging the manually submitted first release, set the repository variable `EDGE_ADDONS_MANUAL_SUBMISSION_TAG` to that exact tag (for example, `v1.1.4`). This makes the initial tag publish to GitHub and Chrome while intentionally skipping a duplicate Edge upload. Later tags automatically publish to both stores.
+Before tagging the manually submitted first release, set the repository variable `EDGE_ADDONS_MANUAL_SUBMISSION_TAG` to that exact tag (for example, `v1.1.5`). This makes the initial tag publish to GitHub and Chrome while intentionally skipping a duplicate Edge upload. Later tags automatically publish to both stores.
 
 The release workflow also supports a manual retry of an existing tag with target `github`, `chrome`, or `edge`. It rebuilds from the exact tag, verifies that the tagged commit belongs to `main`, and publishes only a verified store ZIP.
 

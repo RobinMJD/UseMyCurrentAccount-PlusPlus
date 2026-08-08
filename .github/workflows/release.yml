@@ -38,14 +38,16 @@ jobs:
       - name: Checkout exact tag
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Verify tagged commit is on main
         run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
           git fetch origin main --no-tags
-          TAG_COMMIT="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          TAG_COMMIT="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
           git merge-base --is-ancestor "$TAG_COMMIT" origin/main
 
       - name: Setup Node
@@ -134,7 +136,7 @@ jobs:
       - name: Checkout publisher script
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           persist-credentials: false
 
       - name: Setup Node
@@ -169,7 +171,7 @@ jobs:
       - name: Checkout publisher script
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: refs/tags/${{ env.RELEASE_TAG }}
           persist-credentials: false
 
       - name: Setup Node

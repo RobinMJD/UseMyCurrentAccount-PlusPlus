@@ -58,6 +58,9 @@ describe("Microsoft Edge Add-ons publisher", () => {
       "EDGE_ADDONS_MANUAL_SUBMISSION_TAG != (github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name)"
     );
     expect(workflow).not.toContain("EDGE_ADDONS_MANUAL_SUBMISSION_TAG != env.RELEASE_TAG");
+    expect(workflow).toContain("ref: refs/tags/${{ env.RELEASE_TAG }}");
+    expect(workflow).toContain('git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"');
+    expect(workflow).toContain('git rev-parse "refs/tags/${RELEASE_TAG}^{commit}"');
     expect(workflow).toContain("usemycurrentaccount-plusplus-${{ env.RELEASE_TAG }}-edge-addons.zip");
   });
 });

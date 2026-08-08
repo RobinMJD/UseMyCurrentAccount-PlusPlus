@@ -17,4 +17,12 @@ describe("tag and version synchronization", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("Tag/version mismatch");
   });
+
+  test("rejects a workflow ref that is not an exact semantic version tag", () => {
+    const result = spawnSync(process.execPath, ["scripts/check-version-sync.mjs", "release-1.1.5"], {
+      encoding: "utf8"
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Invalid release tag");
+  });
 });
