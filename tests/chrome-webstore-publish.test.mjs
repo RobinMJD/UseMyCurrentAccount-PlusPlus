@@ -90,7 +90,7 @@ describe("release workflow", () => {
     const workflow = readFileSync(".github/workflows/release.yml", "utf8");
     expect(workflow).toContain("Publish to Chrome Web Store");
     expect(workflow).toContain("environment: chrome-web-store");
-    expect(workflow).toContain("group: chrome-web-store-release");
+    expect(workflow).toContain("group: release-");
     expect(workflow).toContain("CHROME_WEBSTORE_CLIENT_ID");
     expect(workflow).toContain("CHROME_WEBSTORE_REFRESH_TOKEN");
     expect(workflow).toContain("scripts/publish-chrome-webstore.mjs");

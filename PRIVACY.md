@@ -8,7 +8,7 @@ To provide its user-facing sign-in feature, the browser may send the configured 
 
 ## Data Stored Locally
 
-The extension stores the following data in the current browser profile using `chrome.storage.local`:
+The extension stores the following data in the current browser profile using the browser's local extension-storage API:
 
 - Extension enabled or disabled state.
 - Account to auto select.
@@ -43,7 +43,7 @@ The configured account and domain are disclosed to Microsoft only as sign-in hin
 
 UseMyCurrentAccount++ does not send extension data to any developer server, analytics service, or advertising service. Its only feature-related transfer is the configured account or domain hint sent directly to Microsoft as part of the Microsoft sign-in request described above. It does not transfer data for advertising, profiling, resale, creditworthiness, or any purpose unrelated to the Extension's single purpose.
 
-UseMyCurrentAccount++'s use of information received from Chrome APIs adheres to the [Chrome Web Store User Data Policy](https://developer.chrome.com/docs/webstore/program-policies/user-data), including the Limited Use requirements.
+UseMyCurrentAccount++ limits information received from browser APIs to the extension's user-facing single purpose. Its Chrome distribution also adheres to the [Chrome Web Store User Data Policy](https://developer.chrome.com/docs/webstore/program-policies/user-data), including the Limited Use requirements.
 
 ## Data Deletion
 

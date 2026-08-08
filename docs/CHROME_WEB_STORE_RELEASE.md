@@ -1,6 +1,6 @@
 # Chrome Web Store Release
 
-The first Chrome Web Store item is created and fully configured in the Developer Dashboard. Later updates are built, verified, released, and submitted by `.github/workflows/release.yml` from a `vX.Y.Z` tag on `main`.
+The first Chrome Web Store item is created and fully configured in the Developer Dashboard. Later updates are built, verified, released, and submitted by `.github/workflows/release.yml` from a `vX.Y.Z` tag on `main`. Microsoft Edge publication is documented separately in `docs/EDGE_ADDONS_RELEASE.md`.
 
 Current Google Cloud project: `UseMyCurrentAccount PlusPlus` (`umca-plusplus-502523`). Current OAuth web-client name: `UseMyCurrentAccount++ GitHub Release Web`.
 
@@ -39,5 +39,5 @@ Never commit OAuth credentials or tokens.
 5. Create and push the matching tag, for example `v1.1.0`.
 6. Verify the GitHub release ZIP checksum and the Chrome Web Store submission state.
 
-The release workflow refuses tags that are not on `main`, rebuilds from the exact tagged commit, and sends the same verified ZIP to both GitHub Releases and the Chrome Web Store API.
+The release workflow refuses tags that are not on `main`, rebuilds from the exact tagged commit, and sends the verified Chrome-named ZIP to both GitHub Releases and the Chrome Web Store API. The Edge-named ZIP is byte-identical and follows its own protected publication job.
 If an older revision is still pending review, the publisher script cancels only that active submission before uploading and submitting the newer tagged version.

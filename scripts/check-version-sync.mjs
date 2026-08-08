@@ -20,7 +20,8 @@ if (mismatches.length) {
   );
 }
 
-const tag = process.env.GITHUB_REF_NAME;
+const cliTag = process.argv.slice(2).find((value) => value !== "--");
+const tag = cliTag || process.env.GITHUB_REF_NAME;
 if (tag?.startsWith("v") && tag.slice(1) !== expected) {
   throw new Error(`Tag/version mismatch: tag=${tag.slice(1)}, package=${expected}`);
 }

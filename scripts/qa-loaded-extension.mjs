@@ -598,11 +598,22 @@ try {
   await renderPromoTile(cdp, assetPage.sessionId, logoSvg);
   await capturePng(cdp, assetPage.sessionId, path.join(releaseDir, "small-promo-440x280.png"));
 
+  await setViewport(cdp, assetPage.sessionId, 1400, 560);
+  await renderLargePromoTile(cdp, assetPage.sessionId, logoSvg);
+  await capturePng(cdp, assetPage.sessionId, path.join(releaseDir, "large-promo-1400x560.png"));
+
   await setViewport(cdp, assetPage.sessionId, 128, 128);
-  await renderStoreIcon(cdp, assetPage.sessionId, logoSvg);
+  await renderStoreIcon(cdp, assetPage.sessionId, logoSvg, 128);
   await capturePng(cdp, assetPage.sessionId, path.join(releaseDir, "store-icon-128.png"));
 
+  await setViewport(cdp, assetPage.sessionId, 300, 300);
+  await renderStoreIcon(cdp, assetPage.sessionId, logoSvg, 300);
+  await capturePng(cdp, assetPage.sessionId, path.join(releaseDir, "store-icon-300.png"));
+
   for (const [releaseName, docsName] of [
+    ["store-icon-300.png", "store-icon-300.png"],
+    ["small-promo-440x280.png", "small-promo-440x280.png"],
+    ["large-promo-1400x560.png", "large-promo-1400x560.png"],
     ["screenshot-01-popup.png", "store-screenshot-01-popup.png"],
     ["screenshot-02-overview.png", "store-screenshot-02-overview.png"],
     ["screenshot-03-approved-apps.png", "store-screenshot-03-approved-apps.png"],
@@ -618,7 +629,9 @@ try {
 
   const assets = await inspectAssets([
     path.join(releaseDir, "store-icon-128.png"),
+    path.join(releaseDir, "store-icon-300.png"),
     path.join(releaseDir, "small-promo-440x280.png"),
+    path.join(releaseDir, "large-promo-1400x560.png"),
     path.join(releaseDir, "screenshot-01-popup.png"),
     path.join(releaseDir, "screenshot-02-overview.png"),
     path.join(releaseDir, "screenshot-03-approved-apps.png"),
@@ -1293,13 +1306,46 @@ async function renderPromoTile(connection, sessionId, logoSvg) {
   `);
 }
 
-async function renderStoreIcon(connection, sessionId, logoSvg) {
+async function renderLargePromoTile(connection, sessionId, logoSvg) {
   const logoUrl = `data:image/svg+xml;base64,${Buffer.from(logoSvg).toString("base64")}`;
-  const iconHtml = `<img alt="" src="${logoUrl}" style="display:block;width:128px;height:128px" />`;
+  const promoHtml = `
+    <main style="position:relative;width:1400px;height:560px;padding:72px 92px;display:grid;grid-template-columns:310px 1fr;align-items:center;gap:70px;box-sizing:border-box;overflow:hidden;">
+      <div style="position:absolute;width:610px;height:610px;border-radius:999px;right:-150px;top:-350px;background:rgba(37,99,235,.10);"></div>
+      <div style="position:absolute;width:430px;height:430px;border-radius:999px;left:-210px;bottom:-285px;background:rgba(15,118,110,.13);"></div>
+      <div style="position:absolute;inset:32px;border:1px solid rgba(148,163,184,.28);border-radius:30px;"></div>
+      <section style="position:relative;display:grid;place-items:center;">
+        <div style="position:absolute;width:280px;height:280px;border-radius:68px;background:rgba(255,255,255,.74);box-shadow:0 32px 80px rgba(15,23,42,.15);border:1px solid rgba(255,255,255,.9);"></div>
+        <img src="${logoUrl}" alt="" style="position:relative;width:230px;height:230px;filter:drop-shadow(0 18px 30px rgba(15,23,42,.18));" />
+      </section>
+      <section style="position:relative;min-width:0;">
+        <p style="margin:0 0 14px;color:#0f766e;font-size:20px;font-weight:850;letter-spacing:.11em;">MICROSOFT SIGN-IN, SIMPLIFIED</p>
+        <h1 style="margin:0;font-size:64px;line-height:1.02;letter-spacing:-2.2px;color:#0f172a;">UseMyCurrentAccount++</h1>
+        <p style="margin:24px 0 28px;max-width:780px;color:#475569;font-size:26px;line-height:1.38;">Keep each browser profile on the Microsoft account you chose.</p>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;">
+          <span style="padding:11px 17px;border-radius:999px;background:#fff;color:#0f766e;font-size:17px;font-weight:750;box-shadow:0 7px 22px rgba(15,23,42,.07);">Exact account match</span>
+          <span style="padding:11px 17px;border-radius:999px;background:#fff;color:#1d4ed8;font-size:17px;font-weight:750;box-shadow:0 7px 22px rgba(15,23,42,.07);">Per-profile settings</span>
+          <span style="padding:11px 17px;border-radius:999px;background:#fff;color:#475569;font-size:17px;font-weight:750;box-shadow:0 7px 22px rgba(15,23,42,.07);">Local-first privacy</span>
+        </div>
+      </section>
+    </main>
+  `;
   await evaluate(connection, sessionId, `
     (() => {
-      document.documentElement.style.cssText = 'width:128px;height:128px;margin:0;background:#f8fafc;';
-      document.body.style.cssText = 'width:128px;height:128px;margin:0;overflow:hidden;background:#f8fafc;';
+      document.documentElement.style.cssText = 'width:1400px;height:560px;margin:0;background:#f8fafc;';
+      document.body.style.cssText = 'width:1400px;height:560px;margin:0;overflow:hidden;background:linear-gradient(135deg,#ecfeff 0%,#eff6ff 58%,#f8fafc 100%);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#0f172a;';
+      document.body.innerHTML = ${JSON.stringify(promoHtml)};
+      return Promise.all([...document.images].map((image) => image.decode())).then(() => true);
+    })()
+  `);
+}
+
+async function renderStoreIcon(connection, sessionId, logoSvg, size) {
+  const logoUrl = `data:image/svg+xml;base64,${Buffer.from(logoSvg).toString("base64")}`;
+  const iconHtml = `<img alt="" src="${logoUrl}" style="display:block;width:${size}px;height:${size}px" />`;
+  await evaluate(connection, sessionId, `
+    (() => {
+      document.documentElement.style.cssText = 'width:${size}px;height:${size}px;margin:0;background:#f8fafc;';
+      document.body.style.cssText = 'width:${size}px;height:${size}px;margin:0;overflow:hidden;background:#f8fafc;';
       document.body.innerHTML = ${JSON.stringify(iconHtml)};
       return document.images[0].decode().then(() => true);
     })()
